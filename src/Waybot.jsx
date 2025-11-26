@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "katex/dist/katex.min.css";
 import Latex from "react-latex-next";
+import MathKeyboard from "./components/MathKeyboard";
 
 const TOPICS = [
   { id: "limits", name: "Limits", description: "Behavior as x approaches a value", color: "from-sky-500 to-cyan-400", icon: "📈" },
@@ -35,12 +36,33 @@ CONVERSATION BEHAVIOR:
      - Exponentials and Logarithms (e^x, ln x)
      - Rational functions with holes or asymptotes
      - Chain rule composites (e.g., sin(x^2))
-3. HANDLING MATH REQUESTS:
+
+3. SOCIAL PAUSE & REDIRECTION:
+   - If the user sends a simple GREETING (e.g., "hi", "hello", "hey"): Acknowledge briefly and politely (e.g., "Hello there!"). Do NOT start teaching or give an example yet. The student must initiate the math problem.
+   - If the user asks a META QUESTION (e.g., "Who are you?", "What can you do?", "Did I ask you?"): Answer briefly and non-argumentatively, then immediately redirect them back to the math topic.
+   - Example response to Meta: "I'm Waybot, your Calculus TA. Are you ready to start on Limits?"
+
+
+4. HANDLING MATH REQUESTS:
    - If they ask "teach me", start the lesson immediately.
    - If they give a problem, solve it step-by-step.
    - If the student says "I don't know", "idk", or gives a wrong answer:
      - Do NOT say "That's right" or "Great job".
      - Instead, acknowledge the gap simply (e.g., "That's okay," or "Let's figure it out together") and then explain the next step.
+
+5. HANDLING INVALID INPUT:
+   - If the student sends gibberish, nonsensical short phrases, or spam (e.g., "dddd", "ss", "jajaja"):
+     - Do NOT try to start a lesson or interpret it as a math question.
+     - Reply with a brief, polite social response asking them to clarify their math question.
+     - Example: "I didn't quite catch that. Could you please type out your question about Calculus?"
+
+6. ON RECEIVING FEEDBACK (ACTIONABLE FLOW):
+   - If the student's last message was the system-generated response "I got it!":
+     - Acknowledge their success briefly and move immediately to the next example or the next major step in the problem.
+     - You MUST advance the lesson; do NOT re-explain the previous point.
+   - If the student's last message was the system-generated response "I'm still confused.":
+     - Acknowledge their confusion and apologize.
+     - Immediately rephrase the previous explanation using simpler language or ask them which specific part (e.g., the algebra, the rule, the concept) is unclear.
 
 TEACHING STYLE:
 1. Keep replies concise (under 100 words).
@@ -196,6 +218,9 @@ export default function Waybot() {
   const [selectedStudentDetail, setSelectedStudentDetail] = useState(null);
   const [awaitingConfusionReason, setAwaitingConfusionReason] = useState(false);
   const [lastMessageId, setLastMessageId] = useState(null);
+  const [showKeyboard, setShowKeyboard] = useState(true);
+  const [activeKeyboardTab, setActiveKeyboardTab] = useState("basic");
+  const inputRef = useRef(null);
 
 
   useEffect(() => {
@@ -397,6 +422,28 @@ export default function Waybot() {
     }
   };
 
+      const handleInsertFromKeyboard = (snippet) => {
+    // default: append at the end if the ref is missing
+    if (!inputRef.current) {
+      setInput((prev) => prev + snippet);
+      return;
+    }
+
+    const el = inputRef.current;
+    const start = el.selectionStart ?? input.length;
+    const end = el.selectionEnd ?? input.length;
+
+    const nextValue = input.slice(0, start) + snippet + input.slice(end);
+    setInput(nextValue);
+
+    // put cursor after the inserted text
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + snippet.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
     const sendMessage = async () => {
     if (!input.trim() || !selectedTopic || isLoading) return;
 
@@ -589,9 +636,13 @@ export default function Waybot() {
             </div>
             <button 
               onClick={() => setView("teacher-login")} 
-              className="text-slate-400 hover:text-white transition text-sm font-medium"
+              className="flex items-center gap-2 p-2 rounded-lg text-slate-400 hover:text-violet-400 hover:bg-slate-800 transition text-sm font-medium" 
+              title="Teacher Portal Access"
             >
-              Teacher Portal →
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.5a1.5 1.5 0 0 1 1.5-1.5h15A1.5 1.5 0 0 1 21 13.5v6.75a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20.25v-6.75ZM15 6.75a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM9 6.75a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+              </svg>
+              Teacher Portal
             </button>
           </div>
         </header>
@@ -691,7 +742,11 @@ export default function Waybot() {
       <div className="min-h-screen flex items-center justify-center p-6 relative">
         <AnimatedBackground />
         <div className="w-full max-w-sm">
-          <button onClick={() => setView("home")} className="text-slate-500 hover:text-white transition mb-8 text-sm">← Back</button>
+          <button onClick={() => setView("home")} className="group p-2 -ml-2 rounded-lg hover:bg-slate-800 transition text-sm text-slate-500 hover:text-white mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400 group-hover:text-white transition-colors">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+          </button>
           <h2 className="text-3xl font-bold text-white mb-2">Welcome!</h2>
           <p className="text-slate-400 mb-8">Enter your name to start learning</p>
           <input type="text" placeholder="Your name or student ID" value={studentName} onChange={(e) => setStudentName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleStudentLogin()} className="w-full px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 transition mb-4" autoFocus />
@@ -709,7 +764,11 @@ export default function Waybot() {
       <div className="min-h-screen flex items-center justify-center p-6 relative">
         <AnimatedBackground />
         <div className="w-full max-w-md">
-          <button onClick={() => setView("student-login")} className="text-slate-500 hover:text-white transition mb-8 text-sm">← Back</button>
+          <button onClick={() => setView("student-login")} className="group p-2 -ml-2 rounded-lg hover:bg-slate-800 transition text-sm text-slate-500 hover:text-white mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400 group-hover:text-white transition-colors">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+          </button>
           <h2 className="text-3xl font-bold text-white mb-2">Hi {studentName}! 👋</h2>
           <p className="text-slate-400 mb-8">What would you like to learn today?</p>
           <div className="space-y-3">
@@ -770,7 +829,23 @@ export default function Waybot() {
 
         {/* HEADER: flex-shrink-0 keeps it from squishing */ }
         <div className="flex-shrink-0 px-4 py-3 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/50 flex items-center gap-3 relative z-10">
-          <button onClick={() => setView("topic-select")} className="text-slate-400 hover:text-white transition p-2 -ml-2 rounded-lg hover:bg-slate-800">←</button>
+          {/* NEW: Professional Back Button (SVG) */}
+          <button 
+            onClick={() => setView("topic-select")} 
+            className="group p-2 -ml-2 rounded-lg hover:bg-slate-800 transition"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={1.5} 
+              stroke="currentColor" 
+              className="w-6 h-6 text-slate-400 group-hover:text-white transition-colors"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+          </button>
+          
           <div className={"w-10 h-10 rounded-xl bg-gradient-to-br " + currentTopic.color + " flex items-center justify-center text-xl shadow-lg"}>
             {currentTopic.icon}
           </div>
@@ -834,11 +909,53 @@ export default function Waybot() {
         <div className="flex-shrink-0 p-4 bg-slate-900/80 backdrop-blur-xl border-t border-slate-800/50 relative z-10">
           <div className="max-w-2xl mx-auto">
             <div className="flex gap-3">
-              <input type="text" placeholder="Ask your question..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} disabled={isLoading} className="flex-1 px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50 transition" />
-              <button onClick={sendMessage} disabled={isLoading || !input.trim()} className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-medium shadow-lg shadow-violet-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+              {/* Keyboard toggle button */}
+              <button
+                type="button"
+                onClick={() => setShowKeyboard((prev) => !prev)}
+                className="hidden sm:flex items-center justify-center h-12 w-12 rounded-xl
+                          bg-slate-800/80 border border-slate-700 text-slate-300
+                          hover:bg-slate-700 hover:text-white transition"
+                title="Toggle math keyboard"
+              >
+                {/* small keyboard icon */}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" strokeWidth="1.5"
+                    className="w-5 h-5">
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <path d="M7 10h2M11 10h2M15 10h2M7 14h2M11 14h2M15 14h2" />
+                </svg>
+              </button>
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Ask your question..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                disabled={isLoading}
+                className="flex-1 px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700
+                          text-white placeholder:text-slate-500 focus:outline-none
+                          focus:ring-2 focus:ring-violet-500 disabled:opacity-50 transition"
+              />
+
+              <button
+                onClick={sendMessage}
+                disabled={isLoading || !input.trim()}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600
+                          text-white font-medium shadow-lg shadow-violet-500/25
+                          disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
                 Send
               </button>
             </div>
+            {showKeyboard && (
+              <MathKeyboard
+                activeTab={activeKeyboardTab}
+                setActiveTab={setActiveKeyboardTab}
+                onInsert={handleInsertFromKeyboard}
+              />
+            )}
             {lastBotMsgWithLog && (
               <div className="flex items-center justify-between mt-3 text-sm">
                 <span className="text-slate-500">
@@ -892,7 +1009,11 @@ export default function Waybot() {
       <div className="min-h-screen flex items-center justify-center p-6 relative">
         <AnimatedBackground />
         <div className="w-full max-w-sm">
-          <button onClick={() => setView("home")} className="text-slate-500 hover:text-white transition mb-8 text-sm">← Back</button>
+          <button onClick={() => setView("home")} className="group p-2 -ml-2 rounded-lg hover:bg-slate-800 transition text-sm text-slate-500 hover:text-white mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400 group-hover:text-white transition-colors">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+          </button>
           <h2 className="text-3xl font-bold text-white mb-2">Teacher Portal</h2>
           <p className="text-slate-400 mb-8">Enter password to access analytics</p>
           <input type="password" placeholder="Portal password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && teacherPass === TEACHER_PASSWORD) { setTeacherAuthenticated(true); setView("teacher-dashboard"); }}} className="w-full px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 transition mb-4" autoFocus />
@@ -1240,6 +1361,7 @@ export default function Waybot() {
   );
   // --- HELPER COMPONENT FOR DASHBOARD ---
 };
+
 const QuestionCard = ({ r }) => {
   const topic = TOPICS.find((t) => t.id === r.topicId);
 
