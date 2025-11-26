@@ -3,6 +3,37 @@ import "katex/dist/katex.min.css";
 import Latex from "react-latex-next";
 import MathKeyboard from "./components/MathKeyboard";
 
+// Auto-wrap math-looking lines in $ ... $ so KaTeX formats them
+function autoLatex(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return "";
+
+  // Do NOT convert if it has normal sentence punctuation or letters only
+  if (/^[a-zA-Z\s]+$/.test(trimmed)) {
+    return trimmed;   // <-- important fix
+  }
+
+  // Do NOT convert if it's clearly conversational
+  if (/\b(hi|hello|hey|sad|tired|help|please|sorry|ok|yes|no)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // If it already contains LaTeX syntax
+  if (trimmed.includes("$") || /\\[a-zA-Z]+/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Pure math pattern
+  const mathPattern = /^[0-9+\-*/^_=()<>∞→−\s.x]+$/i;
+
+  if (mathPattern.test(trimmed)) {
+    return `$${trimmed}$`;
+  }
+
+  return trimmed;
+}
+
+
 const TOPICS = [
   { id: "limits", name: "Limits", description: "Behavior as x approaches a value", color: "from-sky-500 to-cyan-400", icon: "📈" },
   { id: "differentiation", name: "Differentiation", description: "Rates of change and slopes", color: "from-violet-500 to-purple-400", icon: "📐" },
@@ -19,10 +50,42 @@ Help college students master Calculus. Your teaching style must be "Easy-to-Adva
 1. Briefly explain the concept simply.
 2. IMMEDIATELY apply it to a non-trivial, college-level function.
 
+TOPIC AWARENESS (CRITICAL):
+- You will always adapt to the current Calculus topic (Limits, Derivatives, Integrals, Chain Rule, Implicit Differentiation, Related Rates, etc.).
+- If CURRENT TOPIC is provided, ALWAYS teach that topic and choose examples appropriate for it.
+- Do NOT mix topics. Example:
+  - If topic = Limits → Do NOT show derivative examples.
+  - If topic = Derivatives → Do NOT give limit-definition examples unless needed.
+  - If topic = Integrals → Use antiderivatives, u-substitution, areas, definite integrals.
+- Your examples must match the topic.
+
 AUDIENCE:
 - The user is a Senior High or College student. 
 - Do NOT use "baby" examples like "1 + 1" or "x + 2" unless illustrating a very basic arithmetic property.
 - Assume they know basic algebra. Focus on the Calculus.
+
+EXAMPLE VARIETY (CRITICAL):
+- Do NOT always start with the same example function.
+- Within a single conversation, avoid reusing the exact same function (e.g., \\frac{x^2 - 4}{x - 2}) unless the student explicitly asks to revisit it.
+- When introducing a topic (like limits, derivatives, or integrals), rotate across DIFFERENT FUNCTION TYPES over time:
+  - rational functions with holes or asymptotes,
+  - trigonometric (\\sin, \\cos, \\tan),
+  - exponentials and logarithms (e^x, \\ln x),
+  - polynomials of different degrees,
+  - chain-rule-style composites (e.g., \\sin(x^2), e^{3x}, \\ln(2x+1)).
+- Randomize coefficients and constants using small integers (for example, between -5 and 5, excluding 0 when necessary), so each new example feels fresh.
+
+TOPIC-SPECIFIC EXAMPLES:
+- If topic = Limits:
+  Use rational functions with holes, trig limits, infinity limits, piecewise limits.
+- If topic = Differentiation:
+  Use power rule, product rule, quotient rule, chain rule, trig derivatives, composite functions.
+- If topic = Integrals:
+  Use basic antiderivatives, u-substitution, trig integrals, exponential/log integrals, definite integrals.
+- If topic = Derivatives of Trig:
+  Use sin, cos, tan, cot, sec, csc and their compositions.
+- If topic = Applications (Optimization, Related Rates):
+  Use word problems and diagrams.
 
 CONVERSATION BEHAVIOR:
 1. ADAPTIVE RESPONSES:
@@ -41,7 +104,6 @@ CONVERSATION BEHAVIOR:
    - If the user sends a simple GREETING (e.g., "hi", "hello", "hey"): Acknowledge briefly and politely (e.g., "Hello there!"). Do NOT start teaching or give an example yet. The student must initiate the math problem.
    - If the user asks a META QUESTION (e.g., "Who are you?", "What can you do?", "Did I ask you?"): Answer briefly and non-argumentatively, then immediately redirect them back to the math topic.
    - Example response to Meta: "I'm Waybot, your Calculus TA. Are you ready to start on Limits?"
-
 
 4. HANDLING MATH REQUESTS:
    - If they ask "teach me", start the lesson immediately.
@@ -63,6 +125,12 @@ CONVERSATION BEHAVIOR:
    - If the student's last message was the system-generated response "I'm still confused.":
      - Acknowledge their confusion and apologize.
      - Immediately rephrase the previous explanation using simpler language or ask them which specific part (e.g., the algebra, the rule, the concept) is unclear.
+7. EMOTIONAL / PERSONAL MESSAGES:
+   - If the student expresses emotions (e.g., "im sad", "im stressed", "naiyak ko", "napressure ko"), respond with brief, genuine empathy FIRST.
+   - Example: "I’m really sorry you’re feeling that way. That sounds heavy."
+   - After 1–2 short supportive sentences, gently OFFER (not force) to use Calculus as a distraction: 
+     "If you want, we can work on some Calculus together, or we can take it slowly today."
+   - Do NOT dismiss or minimize their feelings. Avoid toxic positivity.
 
 TEACHING STYLE:
 1. Keep replies concise (under 100 words).
@@ -71,15 +139,22 @@ TEACHING STYLE:
    - Bad: "What is 2 + 2?"
    - Good: "If we plug in 0, we get 0/0. What technique should we use here?"
 4. Break complex problems into 2-3 steps. Do not dump the whole solution.
-5. **CHECK FOR UNDERSTANDING (STRATEGIC & ACTIONABLE):**
+5. CHECK FOR UNDERSTANDING (STRATEGIC & ACTIONABLE):
    - Do NOT ask "Does this make sense?" after simple greetings or short answers.
    - ONLY ask when:
      a. You have just explained a difficult concept.
      b. You have completed a major step in a calculation.
      c. The student was previously confused.
-   - **CRITICAL:** When you DO check in, explicitly guide them to the UI.
-   - Example phrase: "Are you following this step? (Please click **Got it** or **Still confused**)."
+   - CRITICAL: When you DO check in, explicitly guide them to the UI.
+   - Example phrase: "Are you following this step? (Please click Got it or Still confused)."
    - This ensures the student knows to use the buttons to proceed.
+6. VARIETY AND NON-REPETITION:
+   - NEVER reuse the same opening explanation across sessions.
+   - NEVER reuse the same example twice (even if the topic is the same).
+   - ALWAYS generate unique, fresh problems each time the student starts a session or asks “teach me”.
+   - Rotate among algebraic, rational, trigonometric, logarithmic, exponential, and piecewise examples.
+   - Do NOT use the common textbook examples such as (x² - 4)/(x - 2) unless the student explicitly gives it.
+   - Each session should FEEL new, as if taught by a human tutor who intentionally avoids repetition.
 
 FORMATTING RULES (CRITICAL FOR MATH):
 - Use PLAIN TEXT for conversation.
@@ -88,22 +163,30 @@ FORMATTING RULES (CRITICAL FOR MATH):
 - STRICTLY follow these LaTeX rules:
   - Inline math: $f(x) = x^2$ (Single dollar signs)
   - Block math (for major steps):
-    $$ \lim_{x \to 0} \frac{\sin(x)}{x} $$
-  - Fractions: Use \\frac{a}{b}
-  - Roots: Use \\sqrt{x}
-  - ESCAPE BACKSLASHES: You must write \\frac, \\sqrt, \\int.
+    $$ \\lim_{x \\to 0} \\frac{\\sin(x)}{x} $$
+  - Fractions: Use \\\\frac{a}{b}
+  - Roots: Use \\\\sqrt{x}
+  - ESCAPE BACKSLASHES: You must write \\\\frac, \\\\sqrt, \\\\int.
 
 EXAMPLE INTERACTION:
 Student: "Teach me limits."
 Waybot: "A limit asks what value a function approaches as x gets closer to a specific point, even if it doesn't reach it.
 For example, take the classic indeterminate form:
-$$ \lim_{x \to 0} \frac{\sin(x)}{x} $$
-If we plug in 0 directly, we get $\frac{0}{0}$, which is undefined. Do you remember what this specific limit evaluates to, or should we look at the graph?"
+$$ \\lim_{x \\to 0} \\frac{\\sin(x)}{x} $$
+If we plug in 0 directly, we get $\\frac{0}{0}$, which is undefined. Do you remember what this specific limit evaluates to, or should we look at the graph?"
+
+RESPECTFUL LANGUAGE:
+- Never curse, swear, or use rude or insulting words, even if the student does.
+- Never use slurs or offensive jokes.
+- Always speak like a kind, patient university tutor.
 
 CRITICAL RULES:
 - Never just drop the final answer without explanation.
 - Always guide the student through the reasoning.
-- If the student goes off-topic (non-calculus), briefly respond and gently redirect back to Calculus.`;
+- If the student goes off-topic (non-calculus), briefly respond and gently redirect back to Calculus.
+- Never insult or shame the student.
+- Never use profanity or bad words.`;
+
 
 const AnimatedBackground = () => (
   <div className="fixed inset-0 -z-10 overflow-hidden bg-slate-950">
@@ -129,10 +212,11 @@ async function callLLM(provider, { cleanMessages, questionText, studentName, cur
             role: "system",
             content:
               TUTOR_SYSTEM_PROMPT +
-              "\n\nStudent: " +
-              studentName +
-              "\nTopic: " +
-              (currentTopic?.name || ""),
+              "\n\nCURRENT TOPIC: " +
+              (currentTopic?.name || "Calculus") +
+              "\nTeach ONLY this topic unless the student clearly changes it." +
+              "\nStudent: " +
+              studentName,
           },
           ...(cleanMessages.length
             ? cleanMessages
@@ -361,29 +445,61 @@ export default function Waybot() {
   setView("topic-select");
 };
 
-  const handleSelectTopic = async (topicId) => {
-    setSelectedTopic(topicId);
-    const historyKey = studentName.toLowerCase() + "-" + topicId;
-    
-    try {
-      // Get chat history from your server
-      const res = await fetch(`http://localhost:5000/api/chat/${historyKey}`);
-      const savedMsgs = await res.json();
-      
-      if (savedMsgs && savedMsgs.length > 0) {
-        setMessages(savedMsgs);
-      } else {
-        const topicName = TOPICS.find((t) => t.id === topicId)?.name;
-        setMessages([{ 
-          id: "welcome", 
-          sender: "bot", 
-          text: "Hello " + studentName + ". I'm ready to help you master " + topicName + ". \n\nWhat's on your mind?" 
-        }]);
-      }
-    } catch (e) { console.error(e); }
-    
-    setView("student-chat");
+  const handleTeacherLogin = () => {
+    if (teacherPass === TEACHER_PASSWORD) {
+      setTeacherAuthenticated(true);
+      setView("teacher-dashboard");
+      setTeacherPass(""); // Clear password for security
+    } else {
+      alert("Incorrect password. Please try again.");
+    }
   };
+
+  const handleSelectTopic = async (topicId) => {
+  setSelectedTopic(topicId);
+  const historyKey = studentName.toLowerCase() + "-" + topicId;
+  const topicName = TOPICS.find((t) => t.id === topicId)?.name;
+
+  try {
+    const res = await fetch(`http://localhost:5000/api/chat/${historyKey}`);
+    const savedMsgs = await res.json();
+
+    if (Array.isArray(savedMsgs) && savedMsgs.length > 0) {
+      setMessages(savedMsgs);
+    } else {
+      // no history → default welcome
+      setMessages([
+        {
+          id: "welcome",
+          sender: "bot",
+          text:
+            "Hello " +
+            studentName +
+            ". I'm ready to help you master " +
+            topicName +
+            ". \n\nWhat's on your mind?",
+        },
+      ]);
+    }
+  } catch (e) {
+    console.error("Failed to load chat history:", e);
+    // fetch failed → STILL give a welcome message
+    setMessages([
+      {
+        id: "welcome",
+        sender: "bot",
+        text:
+          "Hello " +
+          studentName +
+          ". I'm ready to help you master " +
+          topicName +
+          ". \n\nWhat's on your mind?",
+      },
+    ]);
+  }
+
+  setView("student-chat");
+};
 
   const saveChatHistory = async (msgs) => {
     const historyKey = studentName.toLowerCase() + "-" + selectedTopic;
@@ -469,7 +585,7 @@ export default function Waybot() {
       topicId: selectedTopic,
       concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
       explanation: null,
-      question: questionText,
+      question: input,   
       confused: null,
       timestamp: Date.now(),
     };
@@ -750,8 +866,15 @@ export default function Waybot() {
           <h2 className="text-3xl font-bold text-white mb-2">Welcome!</h2>
           <p className="text-slate-400 mb-8">Enter your name to start learning</p>
           <input type="text" placeholder="Your name or student ID" value={studentName} onChange={(e) => setStudentName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleStudentLogin()} className="w-full px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 transition mb-4" autoFocus />
-          <button onClick={handleStudentLogin} disabled={!studentName.trim()} className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-xl shadow-violet-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-            Continue
+          <button 
+            onClick={handleStudentLogin} 
+            // Disable if name is empty
+            disabled={!studentName.trim()} 
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-xl shadow-violet-500/25 transition-all 
+              disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:brightness-100 disabled:hover:shadow-none 
+              hover:scale-105 hover:shadow-violet-500/40 hover:brightness-110 active:scale-95"
+          >
+            {isLoading ? "Loading..." : "Continue"}
           </button>
         </div>
       </div>
@@ -875,18 +998,21 @@ export default function Waybot() {
         {/* FIX 2: Added 'min-h-0'. 
            This is crucial! It stops the long text from expanding the container beyond the screen height. 
            It forces the 'overflow-y-auto' to work correctly. */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6 custom-scrollbar relative z-0">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 custom-scrollbar relative z-0">
           <div className="max-w-2xl mx-auto space-y-4">
             {messages.map((m) => (
               <div key={m.id} className={"flex " + (m.sender === "student" ? "justify-end" : "justify-start")}>
                 <div className={"max-w-[85%] rounded-2xl px-4 py-3 " + (m.sender === "student" ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-br-md" : "bg-slate-800/80 text-slate-100 rounded-bl-md border border-slate-700/50")}>
                  {/* We add .replace to strip asterisks automatically */}
                   {/* Replace /\*+/g removes ALL asterisks (single or double) */}
-                    {m.text.replace(/\*+/g, "").split("\n").map((line, idx) => (
-                    <p key={idx} className={idx > 0 ? "mt-2" : ""}>
-                      <Latex>{line}</Latex>
-                    </p>
-                  ))}
+                    {m.text.replace(/\*+/g, "").split("\n").map((line, idx) => {
+                      const formatted = autoLatex(line);  // <- use helper
+                      return (
+                        <p key={idx} className={idx > 0 ? "mt-2" : ""}>
+                          <Latex>{formatted}</Latex>
+                        </p>
+                      );
+                    })}
                 </div>
               </div>
             ))}
@@ -1016,10 +1142,25 @@ export default function Waybot() {
           </button>
           <h2 className="text-3xl font-bold text-white mb-2">Teacher Portal</h2>
           <p className="text-slate-400 mb-8">Enter password to access analytics</p>
-          <input type="password" placeholder="Portal password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && teacherPass === TEACHER_PASSWORD) { setTeacherAuthenticated(true); setView("teacher-dashboard"); }}} className="w-full px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 transition mb-4" autoFocus />
-          <button onClick={() => { if (teacherPass === TEACHER_PASSWORD) { setTeacherAuthenticated(true); setView("teacher-dashboard"); }}} className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-xl shadow-violet-500/25 transition-all">
-            Access Dashboard
-          </button>
+          <input 
+              type="password" 
+              placeholder="Portal password" 
+              value={teacherPass} 
+              onChange={(e) => setTeacherPass(e.target.value)} 
+              onKeyDown={(e) => e.key === "Enter" && handleTeacherLogin()} 
+              className="w-full px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 transition mb-4" 
+              autoFocus 
+            />
+            <button 
+              onClick={handleTeacherLogin} 
+              // Disable if password field is empty
+              disabled={!teacherPass}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-xl shadow-violet-500/25 transition-all 
+                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:brightness-100 disabled:hover:shadow-none 
+                hover:shadow-violet-500/50 hover:scale-105 active:scale-95"
+            >
+              Access Dashboard
+            </button>
           <p className="text-slate-600 text-xs text-center mt-4">Demo: teacher123</p>
         </div>
       </div>
