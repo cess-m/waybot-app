@@ -33,3 +33,113 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.45);
 }
+
+
+
+/* =============================== */
+/* MATHLIVE THEME          */
+/* =============================== */
+
+/* Ensure the keyboard stays fixed at the bottom */
+.ML__virtual-keyboard {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 9999 !important; /* Above everything */
+  background-color: #0f172a !important; /* slate-900 */
+  border-top: 1px solid #334155 !important;
+  font-family: system-ui, sans-serif !important;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+}
+
+/* Keycap styling */
+.ML__keycap {
+  background-color: #1e293b !important; /* slate-800 */
+  color: #f1f5f9 !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+}
+
+.ML__keycap:hover {
+  background-color: #334155 !important; /* slate-700 */
+  color: white !important;
+  transform: translateY(-1px);
+}
+
+.ML__keycap.ML__keycap--action {
+  background-color: #7c3aed !important; /* violet-600 */
+  color: white !important;
+  border-color: #8b5cf6 !important;
+}
+
+/* Hide the toggle button provided by MathLive if it appears, 
+   since we are handling open/close automatically */
+.ML__keyboard-toggle {
+  display: none !important;
+}
+
+/* ======================================= */
+/* Inline math box inside the chat input   */
+/* ======================================= */
+
+.inline-mathfield {
+  display: inline-flex;
+  align-items: center;
+  min-width: 40px;
+  padding: 2px 8px;
+  margin: 0 4px;
+  border-radius: 9999px;          /* pill shape */
+  border: 1px solid #4f46e5;      /* violet border */
+  background-color: #020617;      /* same as page bg */
+  color: #e5e7eb;
+}
+
+/* 1. Hide the tiny KEYBOARD icon inside the box (We use the toolbar button for this) */
+math-field::part(virtual-keyboard-toggle) {
+  display: none !important;
+}
+
+/* 2. RESTORE & STYLE the MENU (Triple Line) icon inside the box */
+math-field::part(menu-toggle) {
+  display: flex !important;      /* Make it visible */
+  opacity: 1 !important;
+  visibility: visible !important;
+  
+  /* Sizing and Color */
+  width: 20px !important;
+  height: 20px !important;
+  color: rgba(148, 163, 184, 0.5) !important; /* Subtle Slate Gray */
+  
+  /* Spacing */
+  margin-left: 6px;
+  padding: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Hover Effect: Turns white and glows slightly */
+math-field::part(menu-toggle):hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+/* Ensure the SVG icon inside uses our custom color */
+math-field::part(menu-toggle) path {
+  fill: currentColor;
+}
+
+/* Fallback: ensure older selectors don't hide it either */
+math-field .ML__virtual-keyboard-toggle {
+  display: none !important;
+}
+math-field .ML__menu-toggle {
+  display: flex !important;
+}
+
+.ML__selection,
+.ML__contains-caret .ML__group::after {
+  background: rgba(139, 92, 246, 0.12) !important; /* subtle violet glow */
+  border-radius: 6px !important;
+}

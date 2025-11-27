@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "katex/dist/katex.min.css";
 import Latex from "react-latex-next";
-import MathKeyboard from "./components/MathKeyboard";
+import "mathlive";
+import { marked } from "marked";
+// import MathKeyboard from "./components/MathKeyboard";
+
 
 // Auto-wrap math-looking lines in $ ... $ so KaTeX formats them
 function autoLatex(line) {
@@ -100,17 +103,33 @@ CONVERSATION BEHAVIOR:
      - Rational functions with holes or asymptotes
      - Chain rule composites (e.g., sin(x^2))
 
-3. SOCIAL PAUSE & REDIRECTION:
-   - If the user sends a simple GREETING (e.g., "hi", "hello", "hey"): Acknowledge briefly and politely (e.g., "Hello there!"). Do NOT start teaching or give an example yet. The student must initiate the math problem.
-   - If the user asks a META QUESTION (e.g., "Who are you?", "What can you do?", "Did I ask you?"): Answer briefly and non-argumentatively, then immediately redirect them back to the math topic.
-   - Example response to Meta: "I'm Waybot, your Calculus TA. Are you ready to start on Limits?"
+3. SOCIAL PAUSE & REDIRECTION (UPDATED):
+
+   - If the user sends a simple greeting (“hi”, “hey”, “hello”):
+       • Reply briefly and politely.
+       • Do NOT start teaching unless they directly ask.
+
+   - If the user says a META statement like:
+       “I didn’t ask tho”, “stop”, “wait”, “not that”, “that’s not what I meant”:
+         • Apologize briefly.
+         • STOP the current teaching process.
+         • Ask what they want to do next:
+           “No problem—what would you like to focus on?”
+         • Wait for them to choose.
 
 4. HANDLING MATH REQUESTS:
-   - If they ask "teach me", start the lesson immediately.
-   - If they give a problem, solve it step-by-step.
-   - If the student says "I don't know", "idk", or gives a wrong answer:
-     - Do NOT say "That's right" or "Great job".
-     - Instead, acknowledge the gap simply (e.g., "That's okay," or "Let's figure it out together") and then explain the next step.
+   - If the user says “teach me” AND a CURRENT TOPIC is already set:
+       • Begin the lesson for that specific topic immediately.
+       • Do NOT ask what topic. Do NOT list topics.
+
+   - If the user says “teach me” BUT no topic is set yet:
+       • Do NOT begin teaching yet.
+       • Ask a single, short clarifying question:
+         “Sure—what would you like to learn today in Calculus?”
+       • Wait for their answer before teaching.
+
+   - If the user asks to “teach me [specific topic]” (e.g., “teach me limits”):
+       • Set CURRENT TOPIC to that topic and begin teaching immediately.
 
 5. HANDLING INVALID INPUT:
    - If the student sends gibberish, nonsensical short phrases, or spam (e.g., "dddd", "ss", "jajaja"):
@@ -125,15 +144,18 @@ CONVERSATION BEHAVIOR:
    - If the student's last message was the system-generated response "I'm still confused.":
      - Acknowledge their confusion and apologize.
      - Immediately rephrase the previous explanation using simpler language or ask them which specific part (e.g., the algebra, the rule, the concept) is unclear.
-7. EMOTIONAL / PERSONAL MESSAGES:
-   - If the student expresses emotions (e.g., "im sad", "im stressed", "naiyak ko", "napressure ko"), respond with brief, genuine empathy FIRST.
-   - Example: "I’m really sorry you’re feeling that way. That sounds heavy."
-   - After 1–2 short supportive sentences, gently OFFER (not force) to use Calculus as a distraction: 
-     "If you want, we can work on some Calculus together, or we can take it slowly today."
-   - Do NOT dismiss or minimize their feelings. Avoid toxic positivity.
+
+7. EMOTIONAL / PERSONAL MESSAGES (UPDATED):
+
+   - If the student expresses emotions such as "im sad", "im tired", "im stressed", "naiyak ko", "napressure ko":
+       • Respond with brief, genuine empathy FIRST.
+       • Do NOT offer to teach Calculus automatically.
+       • After empathizing, ask gently:
+         "Would you like to pause for now, chat a bit, or continue with Calculus later?"
+       • Wait for the student to decide. Only continue teaching if they explicitly ask to.
 
 TEACHING STYLE:
-1. Keep replies concise (under 100 words).
+1. Keep replies concise (under 50 words).
 2. Use standard mathematical terminology (e.g., "As x approaches infinity...", "Using the Chain Rule...").
 3. When asking a question, challenge them.
    - Bad: "What is 2 + 2?"
@@ -305,7 +327,197 @@ export default function Waybot() {
   const [showKeyboard, setShowKeyboard] = useState(true);
   const [activeKeyboardTab, setActiveKeyboardTab] = useState("basic");
   const inputRef = useRef(null);
+  const mathFieldRef = useRef(null);
+  const editorRef = useRef(null);
+  const [showInsertMenu, setShowInsertMenu] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
+
+  // Configure main hidden mathfield to use custom keyboard container
+useEffect(() => {
+  // 1. Setup the invisible helper field options
+  if (mathFieldRef.current) {
+    mathFieldRef.current.setOptions({
+      virtualKeyboardMode: "manual",
+      virtualKeyboardLayout: "math",
+      virtualKeyboardContainer: "#mathlive-keyboard",
+       menuItems: "all",
+    });
+  }
+  // 2. The Master Listener: Checks if the keyboard actually takes up space
+  const handleKeyboardVisibility = (event) => {
+    // If the keyboard height is > 0, it is OPEN. If 0, it is CLOSED.
+    const rect = window.mathVirtualKeyboard?.boundingRect;
+    const isVisible = rect && rect.height > 0;
+    
+    setKeyboardVisible(!!isVisible);
+  };
+
+  // 3. Attach the listener to the global MathLive object
+  if (window.mathVirtualKeyboard) {
+     window.mathVirtualKeyboard.addEventListener("geometrychange", handleKeyboardVisibility);
+  }
+
+  return () => {
+    if (window.mathVirtualKeyboard) {
+       window.mathVirtualKeyboard.removeEventListener("geometrychange", handleKeyboardVisibility);
+    }
+  };
+}, []);
+  
+  function insertNodeAtCursor(node) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(node);
+
+  range.setStartAfter(node);
+  range.setEndAfter(node);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// CHANGE 1: Accept "openKeyboard" parameter (default is true)
+function addEquation(openKeyboard = true) {
+  const editor = editorRef.current;
+  if (!editor) return;
+
+  // 1. Create Wrapper (The Shield)
+  const wrapper = document.createElement("span");
+  wrapper.setAttribute("contenteditable", "false"); 
+  wrapper.classList.add("math-wrapper");
+
+  // 2. Create Math Field
+  const mf = document.createElement("math-field");
+  mf.classList.add("inline-mathfield");
+  
+  // --- FIX: Use direct properties instead of setOptions (Fixes Warnings) ---
+  mf.mathVirtualKeyboardPolicy = "manual"; 
+  // We don't need to set layout/container here because we did it globally in useEffect
+  
+  // 3. Focus Logic
+  const handleFocus = (e) => {
+    // If the user clicked the internal "Triple Line" menu button, 
+    // we want to let MathLive handle it and NOT open the bottom keyboard.
+    // We check if the click target is the menu toggle inside the Shadow DOM.
+    // (Note: Usually MathLive stops propagation, but this is a safety check)
+    if (e && e.target && e.target.shadowRoot) {
+       // Logic to ignore clicks on the menu button itself if needed
+       // For now, we allow the standard click.
+    }
+
+    if (e && e.type === "click") {
+        e.stopPropagation();
+    }
+    
+    mf.focus(); 
+    
+    // Only open the bottom keyboard if we explicitly asked for it
+    // AND if we are sure the user isn't trying to open the context menu
+    if (window.mathVirtualKeyboard && (e?.type === "click" || openKeyboard)) {
+      window.mathVirtualKeyboard.show();
+    }
+  };
+
+  // Only listen to CLICK to prevent auto-focus loops
+  mf.addEventListener("click", handleFocus);
+
+  // 4. Backspace Logic
+  mf.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if ((e.key === "Backspace" || e.key === "Delete") && !mf.getValue()) {
+      e.preventDefault();
+      wrapper.remove(); 
+      editor.focus(); 
+    }
+  });
+
+  wrapper.appendChild(mf);
+
+  // 5. Sandwich Insertion Logic (Allows multiple boxes on one line)
+  const spaceBefore = document.createTextNode("\u00A0");
+  const spaceAfter = document.createTextNode("\u00A0");
+  const sel = window.getSelection();
+
+  if (document.activeElement && document.activeElement.tagName.toLowerCase() === 'math-field') {
+    const currentWrapper = document.activeElement.closest("span");
+    if (currentWrapper) {
+      const range = document.createRange();
+      range.setStartAfter(currentWrapper);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+
+  if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(spaceAfter);
+    range.insertNode(wrapper); 
+    range.insertNode(spaceBefore);
+    range.setStartAfter(spaceAfter);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } else {
+    editor.appendChild(spaceBefore);
+    editor.appendChild(wrapper);
+    editor.appendChild(spaceAfter);
+  }
+
+  // 6. Final Focus Trigger
+  setTimeout(() => {
+    mf.focus(); 
+
+    // Only open the keyboard if 'openKeyboard' is true (default).
+    // If we call addEquation(false), it creates the box silently.
+    if (openKeyboard) {
+       handleFocus(); 
+       setKeyboardVisible(true);
+       document.querySelector("#mathlive-keyboard")?.classList.remove("hidden");
+    }
+  }, 50);
+
+  setShowInsertMenu(false);
+}
+
+function insertMathBox() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+
+  const range = sel.getRangeAt(0);
+
+  // create the inline mathfield
+  const mf = document.createElement("math-field");
+
+  // give it a class so we can style it nicely
+  mf.classList.add("inline-mathfield");
+
+  // never auto-open MathLive’s keyboard
+  mf.setOptions({
+  virtualKeyboardMode: "manual",
+  virtualKeyboardLayout: "math",
+  virtualKeyboardContainer: "#mathlive-keyboard",
+
+  smartFence: false,                  
+  removeExtraneousParentheses: true,   
+});
+
+
+  // empty placeholder
+  mf.value = "\\placeholder{}";
+
+  // insert mathfield into chat input at the cursor
+  range.insertNode(mf);
+
+  // move caret into the mathfield
+  setTimeout(() => {
+    mf.focus();
+  }, 0);
+}
 
   useEffect(() => {
     fetch("http://localhost:5000/api/logs")
@@ -539,138 +751,265 @@ export default function Waybot() {
   };
 
       const handleInsertFromKeyboard = (snippet) => {
-    // default: append at the end if the ref is missing
-    if (!inputRef.current) {
-      setInput((prev) => prev + snippet);
-      return;
+        if (mathFieldRef.current) {
+          // Insert LaTeX into the MathLive field
+          mathFieldRef.current.executeCommand("insert", snippet);
+
+          // Sync React state with the field's LaTeX value
+          const v = mathFieldRef.current.getValue("latex");
+          setInput(v);
+        } else {
+          // Fallback: append to plain input if mathField not available
+          setInput((prev) => prev + snippet);
+        }
+      };
+  
+  // 1. Opens the Bottom Keyboard (Numbers, Symbols, Calculus)
+  // 1. Opens the Bottom Keyboard (Numbers, Symbols)
+  // 1. Forces a NEW Math Box every time the button is clicked
+const handleOpenKeyboard = () => {
+  // If the user is currently INSIDE a math field, we need to step out of it 
+  // so we don't try to put a box inside a box.
+  if (document.activeElement && document.activeElement.tagName.toLowerCase() === 'math-field') {
+    const currentWrapper = document.activeElement.closest("span");
+    if (currentWrapper) {
+      // Move cursor immediately AFTER the current math box
+      const range = document.createRange();
+      range.setStartAfter(currentWrapper);
+      range.collapse(true);
+      
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
+  }
+  addEquation(true);
+};
 
-    const el = inputRef.current;
-    const start = el.selectionStart ?? input.length;
-    const end = el.selectionEnd ?? input.length;
+const handleOpenContextMenu = () => {
+  if (!editorRef.current) return;
 
-    const nextValue = input.slice(0, start) + snippet + input.slice(end);
-    setInput(nextValue);
+  // 1) Try currently focused math-field
+  let targetMf = document.querySelector("math-field:focus-within");
 
-    // put cursor after the inserted text
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + snippet.length;
-      el.setSelectionRange(pos, pos);
-    });
+  // 2) If none focused, fallback: use the last math-field in the editor
+  if (!targetMf) {
+    const allMfs = editorRef.current.querySelectorAll("math-field");
+    if (allMfs.length > 0) {
+      targetMf = allMfs[allMfs.length - 1];
+    }
+  }
+
+  const openMenuFor = (mf) => {
+    if (!mf) return;
+
+    mf.focus();
+
+    const rect = mf.getBoundingClientRect();
+
+    // 👉 This tells MathLive to open its built-in context menu
+    mf.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      })
+    );
   };
 
-    const sendMessage = async () => {
-    if (!input.trim() || !selectedTopic || isLoading) return;
+  if (targetMf) {
+    // If math-field already exists → open menu
+    openMenuFor(targetMf);
+  } else {
+    // No math-field? → create one automatically
+    addEquation(false);
 
-    // 1) Add the student's message to the UI
-    const userMessage = {
+    setTimeout(() => {
+      const allMfs = editorRef.current?.querySelectorAll("math-field");
+      const newMf =
+        allMfs && allMfs.length > 0 ? allMfs[allMfs.length - 1] : null;
+
+      openMenuFor(newMf);
+    }, 40);
+  }
+};
+
+
+  const sendMessage = async () => {
+  if (!editorRef.current) return;
+
+  // --- NEW CODE START: PREPARE DATA BEFORE SENDING ---
+
+  // 1. "Bake" the Math: Force the typed values into the HTML attributes
+  // This makes sure the math appears correctly in the chat bubbles later.
+  const mathFields = editorRef.current.querySelectorAll("math-field");
+  mathFields.forEach((mf) => {
+    // Get the LaTeX value the user typed
+    const val = mf.getValue(); 
+    // Save it into the HTML so it persists
+    mf.setAttribute("value", val);
+    // Make it read-only for the chat log
+    mf.setAttribute("read-only", "true");
+  });
+
+  // 2. Build the Text for AI: Manually construct the string
+  // innerText often ignores custom tags, so we build it node-by-node.
+  let constructedText = "";
+  
+  editorRef.current.childNodes.forEach((node) => {
+    // If it's a Text Node (normal typing), add it
+    if (node.nodeType === Node.TEXT_NODE) {
+      constructedText += node.textContent;
+    } 
+    // If it's our Math Wrapper (the shield), get the math inside
+    else if (node.nodeName === "SPAN" && node.classList.contains("math-wrapper")) {
+      const mf = node.querySelector("math-field");
+      if (mf) {
+        constructedText += ` $${mf.getValue()}$ `; // Wrap in $ for AI
+      }
+    }
+    // If it's a raw Math Field (just in case), get the value
+    else if (node.nodeName === "MATH-FIELD") {
+       constructedText += ` $${node.getValue()}$ `;
+    }
+    // Any other HTML elements
+    else {
+      constructedText += node.innerText || " ";
+    }
+  });
+
+  // Clean up: Remove the invisible "anchor spaces" (\u00A0) we used for layout
+  const cleanText = constructedText.replace(/\u00A0/g, " ").trim();
+  
+  // Get the HTML (now containing the "baked" math values)
+  const rawHtml = editorRef.current.innerHTML; 
+
+  // Validation: If both text and HTML are empty, don't send
+  if (!cleanText && !rawHtml) return;
+
+  // --- NEW CODE END ---
+
+  // Close Keyboard
+  setKeyboardVisible(false);
+  if (window.mathVirtualKeyboard) {
+    window.mathVirtualKeyboard.hide();
+  }
+
+  // CLEAR THE EDITOR
+  editorRef.current.innerHTML = "";
+
+  // 2) Add the student's message to the UI
+  const userMessage = {
       id: Date.now() + "-user",
       sender: "student",
-      text: input.trim(),
+      html: rawHtml,   // Shows the math boxes correctly
+      text: cleanText  // Shows "$x^2$" to the AI
     };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+  const newMessages = [...messages, userMessage];
+  setMessages(newMessages);
 
-    const questionText = input.trim();
-    setInput("");
-    setIsLoading(true);
+  const questionText = cleanText; // Send the readable text to AI
+  setInput("");
 
-    // 2) Log this question for analytics
-    // ... inside sendMessage ...
-    const logEntry = {
-      // ... keep your existing logEntry fields ...
-      id: Date.now().toString(), // Ensure ID is string for consistency
-      student: studentName.trim(),
-      topicId: selectedTopic,
-      concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
-      explanation: null,
-      question: input,   
-      confused: null,
-      timestamp: Date.now(),
-    };
+  // clear the MathLive field refs if any exist in memory
+  if (mathFieldRef.current) {
+    mathFieldRef.current.setValue("");
+  }
 
-    setLogs((prev) => [...prev, logEntry]);
+  setIsLoading(true);
 
-    // SAVE LOG TO SERVER
-    fetch("http://localhost:5000/api/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(logEntry)
-    }).catch(err => console.error("Log save failed", err));
+  // 3) Log this question for analytics
+  const logEntry = {
+    id: Date.now().toString(),
+    student: studentName.trim(),
+    topicId: selectedTopic,
+    concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
+    explanation: null,
+    question: questionText, 
+    confused: null,
+    timestamp: Date.now(),
+  };
 
-    // ... continue with API call ...
+  setLogs((prev) => [...prev, logEntry]);
 
-    try {
-      // 3) Convert messages into generic chat format
-      const apiMessages = newMessages
-        .filter((m) => m.id !== "welcome")
-        .map((m) => ({
-          role: m.sender === "student" ? "user" : "assistant",
-          content: m.text,
-        }));
+  // SAVE LOG TO SERVER
+  fetch("http://localhost:5000/api/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(logEntry)
+  }).catch(err => console.error("Log save failed", err));
 
-      const cleanMessages = [];
-      for (const msg of apiMessages) {
-        if (cleanMessages.length === 0 && msg.role === "assistant") continue;
-        if (
-          cleanMessages.length > 0 &&
-          cleanMessages[cleanMessages.length - 1].role === msg.role
-        ) {
-          cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
-          continue;
-        }
-        cleanMessages.push(msg);
+  try {
+    // 3) Convert messages into generic chat format
+    const apiMessages = newMessages
+      .filter((m) => m.id !== "welcome")
+      .map((m) => ({
+        role: m.sender === "student" ? "user" : "assistant",
+        content: m.text, // Sends the processed text
+      }));
+
+    const cleanMessages = [];
+    for (const msg of apiMessages) {
+      if (cleanMessages.length === 0 && msg.role === "assistant") continue;
+      if (
+        cleanMessages.length > 0 &&
+        cleanMessages[cleanMessages.length - 1].role === msg.role
+      ) {
+        cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
+        continue;
       }
-
-      // 4) Call the active LLM (Gemini, because ACTIVE_PROVIDER = "gemini")
-      const aiText = await callLLM(ACTIVE_PROVIDER, {
-        cleanMessages,
-        questionText,
-        studentName,
-        currentTopic,
-      });
-
-      // Attach AI explanation to log entry
-      setLogs((prev) =>
-        prev.map((log) =>
-          log.id === logEntry.id ? { ...log, explanation: aiText } : log
-        )
-      );
-
-      // Save explanation to backend
-      fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ explanation: aiText })
-      }).catch(err => console.error("Explanation save failed", err));
-
-
-      // 5) Add the bot's reply to chat
-      const botMessage = {
-        id: Date.now() + "-bot",
-        sender: "bot",
-        text: aiText,
-        logId: logEntry.id,
-      };
-      const finalMessages = [...newMessages, botMessage];
-      setFeedbackStatus(null);
-      setMessages(finalMessages);
-      saveChatHistory(finalMessages);
-    } catch (e) {
-      console.error("API Error:", e);
-      const errorMsg = {
-        id: Date.now() + "-error",
-        sender: "bot",
-        text:
-          "Oops! I couldn't connect. Please try again in a moment. 🙁",
-        logId: logEntry.id,
-      };
-      setMessages([...newMessages, errorMsg]);
+      cleanMessages.push(msg);
     }
 
-    setIsLoading(false);
-  };
+    // 4) Call the active LLM
+    const aiText = await callLLM(ACTIVE_PROVIDER, {
+      cleanMessages,
+      questionText,
+      studentName,
+      currentTopic,
+    });
+
+    // Attach AI explanation to log entry
+    setLogs((prev) =>
+      prev.map((log) =>
+        log.id === logEntry.id ? { ...log, explanation: aiText } : log
+      )
+    );
+
+    // Save explanation to backend
+    fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ explanation: aiText })
+    }).catch(err => console.error("Explanation save failed", err));
+
+
+    // 5) Add the bot's reply to chat
+    const botMessage = {
+      id: Date.now() + "-bot",
+      sender: "bot",
+      text: aiText,
+      logId: logEntry.id,
+    };
+    const finalMessages = [...newMessages, botMessage];
+    setFeedbackStatus(null);
+    setMessages(finalMessages);
+    saveChatHistory(finalMessages);
+  } catch (e) {
+    console.error("API Error:", e);
+    const errorMsg = {
+      id: Date.now() + "-error",
+      sender: "bot",
+      text:
+        "Oops! I couldn't connect. Please try again in a moment. 🙁",
+      logId: logEntry.id,
+    };
+    setMessages([...newMessages, errorMsg]);
+  }
+
+  setIsLoading(false);
+};
 
   const recordUnderstanding = (confused, logId) => {
     // 1) Update logs for analytics (Local UI)
@@ -930,23 +1269,43 @@ export default function Waybot() {
         <AnimatedBackground />
 
         {/* Custom Scrollbar Styles */}
-        <style>{`
-          .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
+       <style>{`
+          /* 1. The Wrapper: Acts as a shield so chat cursor skips over it */
+          .math-wrapper {
+            display: inline-block;
+            vertical-align: middle;
+            margin: 0 2px;
           }
-          .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
+
+          /* 2. The Math Field: The actual editable box */
+          math-field {
+            /* Visuals: Subtle outline so you see it */
+            border: 1px solid rgba(255, 255, 255, 0.2) !important; 
+            background: rgba(255, 255, 255, 0.05) !important;
+            border-radius: 6px;
+            
+            /* Sizing & spacing */
+            min-width: 40px; 
+            padding: 4px 8px;
+            font-size: 1.1rem;
+            color: white !important;
+            
+            /* Interaction */
+            outline: none !important;
+            box-shadow: none !important;
+            cursor: text; /* Shows the I-beam cursor */
           }
-          .custom-scrollbar::-webkit-scrollbar-thumb {
-            background-color: rgba(148, 163, 184, 0.4);
-            border-radius: 10px;
+
+          /* Active State: Glows violet when you are typing */
+          math-field:focus-within {
+            border-color: rgba(139, 92, 246, 0.6) !important;
+            background: rgba(139, 92, 246, 0.1) !important;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.2) !important;
           }
-          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background-color: rgba(148, 163, 184, 0.6);
-          }
-          .custom-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+
+          /* Hides the default menu button inside the math field so chat is clean */
+          math-field::part(menu-toggle) {
+            display: none !important;
           }
         `}</style>
 
@@ -998,21 +1357,54 @@ export default function Waybot() {
         {/* FIX 2: Added 'min-h-0'. 
            This is crucial! It stops the long text from expanding the container beyond the screen height. 
            It forces the 'overflow-y-auto' to work correctly. */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 custom-scrollbar relative z-0">
+        {/* --- ADD THIS STYLE BLOCK HERE --- */}
+        <style>{`
+          math-field {
+            background: transparent !important;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            color: white !important;
+            font-size: 1.1rem;
+            padding: 0 4px;
+            margin: 0 2px;
+          }
+          /* Only show a subtle box when you are actually typing inside it */
+          math-field:focus-within {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-radius: 4px;
+          }
+          /* Hides the default menu button inside the math field */
+          math-field::part(menu-toggle) {
+            display: none;
+          }
+        `}</style>
+        <div
+          id="chat-scroll-area"
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 custom-scrollbar relative z-0"
+          onClick={() => window.mathVirtualKeyboard?.hide()}
+        >
+         
           <div className="max-w-2xl mx-auto space-y-4">
             {messages.map((m) => (
               <div key={m.id} className={"flex " + (m.sender === "student" ? "justify-end" : "justify-start")}>
                 <div className={"max-w-[85%] rounded-2xl px-4 py-3 " + (m.sender === "student" ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-br-md" : "bg-slate-800/80 text-slate-100 rounded-bl-md border border-slate-700/50")}>
                  {/* We add .replace to strip asterisks automatically */}
                   {/* Replace /\*+/g removes ALL asterisks (single or double) */}
-                    {m.text.replace(/\*+/g, "").split("\n").map((line, idx) => {
-                      const formatted = autoLatex(line);  // <- use helper
-                      return (
-                        <p key={idx} className={idx > 0 ? "mt-2" : ""}>
-                          <Latex>{formatted}</Latex>
-                        </p>
-                      );
-                    })}
+                    {m.html
+                      ? (
+                          <div
+                            className="prose prose-invert"
+                            dangerouslySetInnerHTML={{ __html: marked.parse(m.html) }}
+                            style={{ lineHeight: "1.7", fontSize: "1rem" }}
+                          />
+                        )
+                      : m.text.split("\n").map((line, idx) => (
+                          <p key={idx} className={idx > 0 ? "mt-2" : ""}>
+                            <Latex>{autoLatex(line)}</Latex>
+                          </p>
+                        ))
+                    }
                 </div>
               </div>
             ))}
@@ -1032,10 +1424,16 @@ export default function Waybot() {
         </div>
 
         {/* INPUT AREA: flex-shrink-0 ensures it stays FIXED at the bottom */}
-        <div className="flex-shrink-0 p-4 bg-slate-900/80 backdrop-blur-xl border-t border-slate-800/50 relative z-10">
+        <div
+          className="flex-shrink-0 p-4 bg-slate-900/80 backdrop-blur-xl border-t border-slate-800/50 relative z-10"
+          style={{
+            transition: "margin-bottom 0.25s ease",
+            marginBottom: keyboardVisible ? "320px" : "0px",
+          }}
+        >
           <div className="max-w-2xl mx-auto">
             <div className="flex gap-3">
-              {/* Keyboard toggle button */}
+              {/* Keyboard toggle button 
               <button
                 type="button"
                 onClick={() => setShowKeyboard((prev) => !prev)}
@@ -1044,7 +1442,7 @@ export default function Waybot() {
                           hover:bg-slate-700 hover:text-white transition"
                 title="Toggle math keyboard"
               >
-                {/* small keyboard icon */}
+                {/* small keyboard icon 
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
                     fill="none" stroke="currentColor" strokeWidth="1.5"
                     className="w-5 h-5">
@@ -1052,36 +1450,120 @@ export default function Waybot() {
                   <path d="M7 10h2M11 10h2M15 10h2M7 14h2M11 14h2M15 14h2" />
                 </svg>
               </button>
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Ask your question..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                disabled={isLoading}
-                className="flex-1 px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700
-                          text-white placeholder:text-slate-500 focus:outline-none
-                          focus:ring-2 focus:ring-violet-500 disabled:opacity-50 transition"
-              />
+              */}
 
-              <button
+              <div className="relative w-full">
+
+                {/* MATHLIVE KEYBOARD CONTAINER */}
+                <div
+                  id="mathlive-keyboard"
+                  style={{
+                    position: "fixed",
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    backgroundColor: "#0f172a",
+                    borderTop: "1px solid #334155",
+                    zIndex: 9999,
+                  }}
+                ></div>
+                
+                {/* CONTENTEDITABLE TEXT AREA */}
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning={true}
+                  className="w-full bg-slate-800 text-white p-3 rounded-xl outline-none min-h-[48px]"
+                  onClick={() => window.mathVirtualKeyboard?.hide()}
+                  onKeyDown={(e) => {
+                    // 1. SEND MESSAGE (Enter key)
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                      return;
+                    }
+
+                    // 2. DELETE MATH BOX (Backspace key)
+                    if (e.key === "Backspace") {
+                      const sel = window.getSelection();
+                      // Only proceed if we have a cursor, not a highlighted selection range
+                      if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return;
+
+                      const range = sel.getRangeAt(0);
+                      let nodeToDelete = null;
+
+                      // Scenario A: Cursor is inside the main div (between elements)
+                      if (range.startContainer === editorRef.current) {
+                        const prevNodeIndex = range.startOffset - 1;
+                        if (prevNodeIndex >= 0) {
+                          nodeToDelete = editorRef.current.childNodes[prevNodeIndex];
+                        }
+                      }
+                      // Scenario B: Cursor is at the very start of a text node
+                      // (Example: [MathBox] |Text...)
+                      else if (
+                        range.startContainer.nodeType === Node.TEXT_NODE &&
+                        range.startOffset === 0
+                      ) {
+                        nodeToDelete = range.startContainer.previousSibling;
+                      }
+
+                      // If we found a math wrapper immediately behind the cursor, kill it
+                      if (
+                        nodeToDelete &&
+                        nodeToDelete.nodeType === Node.ELEMENT_NODE &&
+                        (nodeToDelete.classList.contains("math-wrapper") ||
+                          nodeToDelete.tagName === "MATH-FIELD")
+                      ) {
+                        e.preventDefault(); // Stop browser from just highlighting it
+                        nodeToDelete.remove(); // Delete it instantly
+                      }
+                    }
+                  }}
+                ></div>
+
+                {/* BUTTON 1: Keyboard Toggle (Creates new math box) */}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()} 
+                  onClick={handleOpenKeyboard}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 
+                            text-slate-400 hover:text-white hover:bg-slate-700
+                            w-8 h-8 rounded-lg flex items-center justify-center transition"
+                  title="Open Math Keyboard"
+                >
+                   {/* Keyboard Icon */}
+                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 18.25H6A2.25 2.25 0 0 1 3.75 16V6ZM3.75 15.75h16.5M6 7.5h.008v.008H6V7.5Zm3 0h.008v.008H9V7.5Zm3 0h.008v.008H12V7.5Zm3 0h.008v.008H15V7.5Zm3 0h.008v.008H18V7.5ZM6 11.25h.008v.008H6V11.25Zm3 0h.008v.008H9V11.25Zm3 0h.008v.008H12V11.25Zm3 0h.008v.008H15V11.25Zm3 0h.008v.008H18V11.25Z" />
+                  </svg>
+                </button>
+              </div>
+            <button 
+                type="button" 
+                onMouseDown={(e) => e.preventDefault()}   
                 onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600
-                          text-white font-medium shadow-lg shadow-violet-500/25
-                          disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                disabled={
+                  isLoading ||
+                  !editorRef.current ||
+                  (
+                    editorRef.current.innerText.trim() === "" &&
+                    editorRef.current.querySelectorAll("math-field").length === 0
+                  )
+                }
+                className="
+                  px-6 py-3 rounded-xl 
+                  bg-gradient-to-r from-violet-600 to-indigo-600
+                  text-white font-medium 
+                  shadow-lg shadow-violet-500/25
+                  transition-all
+                  hover:shadow-violet-400/40 hover:scale-105 active:scale-95
+                  disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none disabled:scale-100
+                "
               >
                 Send
               </button>
             </div>
-            {showKeyboard && (
-              <MathKeyboard
-                activeTab={activeKeyboardTab}
-                setActiveTab={setActiveKeyboardTab}
-                onInsert={handleInsertFromKeyboard}
-              />
-            )}
+          
             {lastBotMsgWithLog && (
               <div className="flex items-center justify-between mt-3 text-sm">
                 <span className="text-slate-500">
