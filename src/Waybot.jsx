@@ -15,7 +15,7 @@ import HomePage from "./pages/HomePage";
 import StudentChatPage from "./pages/StudentChatPage";
 import TeacherLoginPage from "./pages/TeacherLoginPage";
 import TeacherDashboardPage from "./pages/TeacherDashboardPage";
-import { cleanupText } from "./utils/cleanupText"; 
+import { cleanupText } from "./utils/cleanupText";
 
 
 async function callLLM({ cleanMessages, questionText, studentName, currentTopic, TUTOR_SYSTEM_PROMPT, VITE_GEMINI_API_KEY }) {
@@ -96,6 +96,7 @@ async function callLLM({ cleanMessages, questionText, studentName, currentTopic,
 export default function Waybot() {
   const [view, setView] = useState("home");
   const [studentName, setStudentName] = useState("");
+  const [studentSection, setStudentSection] = useState("");
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [teacherPass, setTeacherPass] = useState("");
   const [teacherAuthenticated, setTeacherAuthenticated] = useState(false);
@@ -118,6 +119,7 @@ export default function Waybot() {
   const editorRef = useRef(null);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  
 
 
   // Configure main hidden mathfield to use custom keyboard container
@@ -411,38 +413,27 @@ function insertMathBox() {
 
     return groups; 
   }, [filteredRecent, groupingMode]);
-    const handleStudentLogin = async () => {
-  if (!studentName.trim()) return;
+  
+  const handleStudentLogin = async () => {
+  if (!studentName.trim() || !studentSection.trim()) return;
 
-  // Ask for consent before saving ANY data
-  const consent = confirm(
-    "Before we continue, do you agree that your questions and AI explanations will be visible to your teacher in the analytics dashboard? This helps them understand where students struggle."
-  );
-
-  if (!consent) {
-    alert("No worries! Your data will not be stored. You may still explore, but analytics will be disabled.");
-    // Go to topics but DO NOT store to backend
-    setView("topic-select");
-    return;
-  }
-
-  // Student consented → save login to backend
   try {
     await fetch("http://localhost:5000/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: studentName.trim(),
-        consent: true   // ← you can also store this in DB
+        section: studentSection.trim(),
+        consent: true
       })
     });
   } catch (e) {
     console.error("Login sync failed", e);
   }
 
-  // Continue to topic selection
   setView("topic-select");
 };
+
 
   const handleTeacherLogin = () => {
     if (teacherPass === TEACHER_PASSWORD) {
@@ -827,12 +818,14 @@ const handleOpenContextMenu = () => {
  // STUDENT LOGIN REPLACEMENT
   if (view === "student-login") {
     return (
-      <StudentLoginPage 
-        setView={setView} 
-        studentName={studentName} 
-        setStudentName={setStudentName} 
-        handleStudentLogin={handleStudentLogin} 
-        isLoading={isLoading} 
+      <StudentLoginPage
+        setView={setView}
+        studentName={studentName}
+        setStudentName={setStudentName}
+        studentSection={studentSection}
+        setStudentSection={setStudentSection}
+        isLoading={isLoading}
+        setIsLoading={setIsLoading}
       />
     );
   }
