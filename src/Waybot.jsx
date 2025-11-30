@@ -20,47 +20,75 @@ import { cleanupText } from "./utils/cleanupText";
 
 async function callLLM({ cleanMessages, questionText, studentName, currentTopic, TUTOR_SYSTEM_PROMPT, VITE_GEMINI_API_KEY }) {
   
-  // 1. Define the API endpoint and key
   const geminiEndpoint =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" +
     VITE_GEMINI_API_KEY;
 
-  // 2. Construct the full prompt text (System Prompt + Context + Conversation)
-  const promptText =
-    TUTOR_SYSTEM_PROMPT +
-    "\n\nStudent: " +
-    studentName +
-    "\nTopic: " +
-    (currentTopic?.name || "") +
-    "\n\nConversation:\n" +
-    (
-      // If there are existing messages, format the conversation history
-      cleanMessages.length
-        ? cleanMessages.map((m) => `${m.role}: ${m.content}`).join("\n")
-        : "user: " + questionText // Otherwise, just send the first question
-    );
+  // 1. Build the System Instruction (the large prompt)
+  const systemInstruction = 
+    TUTOR_SYSTEM_PROMPT + 
+    "\n\nStudent's Name: " + studentName +
+    "\nCURRENT TOPIC: " + (currentTopic?.name || "Calculus");
 
-  // 3. Make the API request
+
+  // 2. Build the Conversation Content
+  // The structure of the contents array MUST alternate roles (user, model)
+  const contents = [
+    // Start the context with the full instruction set (acts as a meta-system prompt)
+    {
+      role: "user",
+      parts: [
+        { text: systemInstruction }
+      ]
+    },
+    
+    // Add the existing history messages
+    ...(cleanMessages.length > 0
+        ? cleanMessages.map(m => ({
+            role: m.role === "user" ? "user" : "model", // Map 'assistant' or 'bot' to 'model'
+            parts: [{ text: m.content }]
+          }))
+        : [
+          // If no history, send the first question as the initial user message
+          {
+            role: "user",
+            parts: [{ text: questionText }]
+          }
+        ]
+    )
+  ];
+  
+  // CRITICAL FIX: Ensure the final message is the user's latest query
+  // Since we use the massive system instruction as the first 'user' message, 
+  // we must ensure the final message is the actual user question if history is present.
+  if (cleanMessages.length > 0) {
+     // The last message in cleanMessages is the latest user question
+     contents.push({
+         role: "user",
+         parts: [{ text: cleanMessages[cleanMessages.length - 1].content }]
+     });
+  }
+
+
   const response = await fetch(geminiEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: promptText }],
-        },
-      ],
+      contents: contents, // <-- Use the structured contents array
     }),
   });
 
   const data = await response.json();
   console.log("Gemini raw response:", data);
 
-  // 4. Extract the response text
-  const aiText =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "Hmm, I'm having trouble thinking right now. Can you try asking again?";
+  const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!aiText) {
+    // Check if the response was blocked and log the reason (safety is common)
+    const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason;
+    console.error("Gemini API Error details - Block Reason:", blockReason);
+    return `Oops! I received an error from the AI (Reason: ${blockReason || 'Unknown'}). Please ask again or try a simpler question.`;
+  }
 
   return aiText;
 }
