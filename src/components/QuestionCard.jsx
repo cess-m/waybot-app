@@ -1,5 +1,6 @@
 import React from 'react';
 import { TOPICS } from '../config/waybotConfig';
+import MathRenderer from "./MathRenderer";
 
 const QuestionCard = ({ r }) => {
   const topic = TOPICS.find((t) => t.id === r.topicId);
@@ -35,14 +36,16 @@ const QuestionCard = ({ r }) => {
         </div>
 
         {/* Student question */}
-        <p className="text-slate-300 text-sm mb-1">{r.question}</p>
+        <div className="text-slate-300 text-sm mb-1">
+          <MathRenderer text={r.question} />
+        </div>
 
-        {/* NEW: short AI explanation snippet */}
         {r.explanation && (
-          <div className="pl-2 border-l-2 border-slate-700 mt-2">
-            <p className="text-slate-500 text-xs line-clamp-2 italic">
-              AI: {r.explanation}
-            </p>
+          <div className="mt-3 p-3 rounded-lg bg-slate-800/40 border border-slate-700/40">
+            <p className="text-slate-400 text-xs font-semibold mb-1">AI Response:</p>
+            <div className="text-slate-300 text-xs leading-relaxed whitespace-pre-line">
+              <MathRenderer text={r.explanation} />
+            </div>
           </div>
         )}
       </div>

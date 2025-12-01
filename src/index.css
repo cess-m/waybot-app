@@ -1,3 +1,5 @@
+@import "katex/dist/katex.min.css";
+
 body {
   background-color: #020617; /* like bg-slate-950 */
   color: #e5e7eb;            /* like text-slate-200 */
