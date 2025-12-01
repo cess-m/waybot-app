@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import AnimatedBackground from '../components/AnimatedBackground';
 import QuestionCard from '../components/QuestionCard';
 import { TOPICS } from '../config/waybotConfig';
+import MathRenderer from "../components/MathRenderer";
 
 const TeacherDashboardPage = ({
   setView,
@@ -683,7 +684,9 @@ const TeacherDashboardPage = ({
                                   <p className="text-slate-400 text-xs font-semibold mb-1">
                                     Question:
                                   </p>
-                                  <p className="text-slate-200 text-sm">{log.question}</p>
+                                  <div className="text-slate-200 text-sm">
+                                    <MathRenderer text={log.question} />
+                                  </div>
                                 </div>
 
                                 {log.explanation && (
@@ -691,9 +694,9 @@ const TeacherDashboardPage = ({
                                     <p className="text-slate-400 text-xs font-semibold mb-1">
                                       AI Response:
                                     </p>
-                                    <p className="text-slate-300 text-xs leading-relaxed line-clamp-3">
-                                      {log.explanation}
-                                    </p>
+                                    <div className="text-slate-300 text-xs leading-relaxed">
+                                      <MathRenderer text={log.explanation} />
+                                    </div>
                                   </div>
                                 )}
                               </div>
