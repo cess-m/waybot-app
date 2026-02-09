@@ -23,6 +23,7 @@ mongoose.connect("mongodb+srv://admin_cess:LJa3B6QudQ0GBahy@cluster0.6zc0fbj.mon
 const LogSchema = new mongoose.Schema({
   id: String,       // We keep your timestamp ID
   student: String,
+  section: { type: String, default: "No Section" },
   topicId: String,
   concept: String,
   question: String,
@@ -38,7 +39,14 @@ const ChatSchema = new mongoose.Schema({
   messages: Array     // Stores the entire conversation
 });
 const Chat = mongoose.model("Chat", ChatSchema);
-
+// Schema for Students/Users
+const UserSchema = new mongoose.Schema({
+  username: String,
+  section: { type: String, default: "No Section" },
+  joinedAt: { type: Date, default: Date.now },
+  lastActive: { type: Date, default: Date.now }
+});
+const User = mongoose.model("User", UserSchema);
 // 3. API ROUTES (The Endpoints)
 
 // GET all logs (For your Teacher Dashboard)
@@ -52,21 +60,49 @@ app.get("/api/logs", async (req, res) => {
 // POST (Save) a new log/question
 app.post("/api/logs", async (req, res) => {
   try {
-    const newLog = new Log(req.body);
+    const body = req.body;
+
+    const section = (body.section && String(body.section).trim()) || "No Section";
+    const student = (body.student && String(body.student).trim()) || "Unknown";
+
+    const newLog = new Log({
+      ...body,
+      student,
+      section,
+      timestamp: body.timestamp || Date.now()
+    });
+
     await newLog.save();
+
+    // ✅ update user's lastActive whenever they ask a question
+    await User.findOneAndUpdate(
+      { username: student },
+      { $set: { lastActive: Date.now() }, $setOnInsert: { joinedAt: Date.now() } },
+      { upsert: true, new: true }
+    );
+
     res.json(newLog);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT (Update) feedback (Got it / Confused)
 app.put("/api/logs/:id", async (req, res) => {
   try {
-    const { confused } = req.body;
-    // Find by your custom 'id', not the MongoDB '_id'
-    await Log.findOneAndUpdate({ id: req.params.id }, { confused });
+    const { confused, explanation } = req.body;
+
+    const update = {};
+    if (typeof confused !== "undefined") update.confused = confused;
+    if (typeof explanation !== "undefined") update.explanation = explanation;
+
+    await Log.findOneAndUpdate({ id: req.params.id }, update);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
 
 // GET Chat History
 app.get("/api/chat/:key", async (req, res) => {
@@ -107,18 +143,27 @@ app.delete("/api/chat/:key", async (req, res) => {
 
 // POST: Handle "Soft Login" (Create user if new, update lastActive if exists)
 app.post("/api/login", async (req, res) => {
-  const { username } = req.body;
+  const { username, section } = req.body;
+
   try {
     const user = await User.findOneAndUpdate(
-      { username: username }, 
-      { $set: { lastActive: Date.now() } }, 
-      { upsert: true, new: true, setDefaultsOnInsert: true } 
+      { username },
+      {
+        $set: {
+          lastActive: Date.now(),
+          ...(section ? { section } : {})
+        },
+        $setOnInsert: { joinedAt: Date.now() }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // GET: Get all students
 app.get("/api/users", async (req, res) => {
@@ -126,14 +171,35 @@ app.get("/api/users", async (req, res) => {
   res.json(users);
 });
 
+
+// Schema for Sections
+const SectionSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  createdAt: { type: Date, default: Date.now }
+});
+const Section = mongoose.model("Section", SectionSchema);
+
+// GET all sections
+app.get("/api/sections", async (req, res) => {
+  const sections = await Section.find().sort({ createdAt: 1 });
+  res.json(sections);
+});
+
+// POST create section
+app.post("/api/sections", async (req, res) => {
+  const { name } = req.body;
+  const section = await Section.create({ name });
+  res.json(section);
+});
+
+// DELETE section
+app.delete("/api/sections/:id", async (req, res) => {
+  await Section.findByIdAndDelete(req.params.id);
+  res.json({ success: true });
+});
+
+
 // 4. START SERVER
 const PORT = 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-// Schema for Students/Users
-const UserSchema = new mongoose.Schema({
-  username: String,
-  joinedAt: { type: Date, default: Date.now },
-  lastActive: { type: Date, default: Date.now }
-});
-const User = mongoose.model("User", UserSchema);

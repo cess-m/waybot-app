@@ -104,6 +104,7 @@ export default function Waybot() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [users, setUsers] = useState([]);
   const [feedbackStatus, setFeedbackStatus] = useState(null); 
   const [chatHistories, setChatHistories] = useState({});
   const [recentFilter, setRecentFilter] = useState("all");  
@@ -317,6 +318,16 @@ function insertMathBox() {
       .catch(err => console.error("Backend offline:", err));
   }, []);
 
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/users")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setUsers(data);
+      })
+      .catch((err) => console.error("Users fetch failed:", err));
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
@@ -327,12 +338,25 @@ function insertMathBox() {
     if (!logs.length) return { totalQuestions: 0, confusionRate: 0, activeStudents: 0, topicsCovered: 0, byTopic: [], byStudent: [], recent: [] };
     const byTopicMap = new Map();
     const byStudentMap = new Map();
+    const userMap = new Map((users || []).map((u) => [u.username, u]));
+
     logs.forEach((log) => {
       if (!byTopicMap.has(log.topicId)) byTopicMap.set(log.topicId, { topicId: log.topicId, topicName: TOPICS.find((t) => t.id === log.topicId)?.name || log.topicId, total: 0, confused: 0 });
       const t = byTopicMap.get(log.topicId);
       t.total++;
       if (log.confused === true) t.confused++;
-      if (!byStudentMap.has(log.student)) byStudentMap.set(log.student, { student: log.student, total: 0, confused: 0, lastActive: log.timestamp });
+      if (!byStudentMap.has(log.student)) {
+        const u = userMap.get(log.student);
+
+        byStudentMap.set(log.student, {
+          student: log.student,
+          section: u?.section || "No Section",   // ✅ add section
+          total: 0,
+          confused: 0,
+          lastActive: log.timestamp
+        });
+      }
+
       const s = byStudentMap.get(log.student);
       s.total++;
       if (log.confused === true) s.confused++;
@@ -348,7 +372,7 @@ function insertMathBox() {
       byStudent: Array.from(byStudentMap.values()).sort((a, b) => b.lastActive - a.lastActive),
       recent: [...logs].sort((a, b) => b.timestamp - a.timestamp).slice(0, 15),
     };
-  }, [logs]);
+  }, [logs, users]);
 
     const conceptStats = useMemo(() => {
       const map = new Map();
@@ -403,9 +427,13 @@ function insertMathBox() {
     
     filteredRecent.forEach((log) => {
       // Decide what key to group by: Student Name OR Concept Name
-      const key = groupingMode === "student" 
-        ? log.student 
-        : (log.concept || "General"); 
+      const key =
+        groupingMode === "student"
+          ? log.student
+          : groupingMode === "section"
+          ? (log.section || "No Section")
+          : (log.concept || "General");
+
         
       if (!groups[key]) groups[key] = [];
       groups[key].push(log);
@@ -427,6 +455,11 @@ function insertMathBox() {
         consent: true
       })
     });
+
+  const res = await fetch("http://localhost:5000/api/users");
+    const data = await res.json();
+    if (Array.isArray(data)) setUsers(data);
+    
   } catch (e) {
     console.error("Login sync failed", e);
   }
@@ -657,6 +690,7 @@ const handleOpenContextMenu = () => {
   const logEntry = {
     id: Date.now().toString(),
     student: studentName.trim(),
+    section: studentSection.trim(),
     topicId: selectedTopic,
     concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
     explanation: null,
