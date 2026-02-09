@@ -14,24 +14,70 @@ const StudentLoginPage = ({
   const [showTerms, setShowTerms] = useState(false);
   const [sections, setSections] = useState([]);
 
-  useEffect(() => {
-    fetch("http://localhost:5000/api/sections")
-      .then((res) => res.json())
-      .then((data) => setSections(data))
-      .catch((err) => console.error("Failed to load sections", err));
-  }, []);
-
-  const handleContinueClick = () => {
-    if (studentName.trim() && studentSection.trim()) {
-      setShowTerms(true);
+  const fetchSections = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/sections");
+      const data = await res.json();
+      setSections(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load sections", err);
+      setSections([]);
     }
   };
 
-  const handleAcceptTerms = async () => {
-    setShowTerms(false);
+  useEffect(() => {
+    fetchSections();
+  }, []);
+
+  const handleContinueClick = async () => {
+  if (!studentName.trim() || !studentSection.trim()) return;
+
+  setIsLoading(true);
+
+  try {
+    const res = await fetch("http://localhost:5000/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: studentName.trim(),
+        section: studentSection.trim(),
+      }),
+    });
+
+    const data = await res.json();
+
+    if (data.needsConsent) {
+      setShowTerms(true);
+      return;
+    }
+
+    setView("topic-select");
+  } catch (e) {
+    alert("Login failed");
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
+  const handleAcceptTerms = async ({ termsAccepted, dataConsent }) => {
     setIsLoading(true);
 
     try {
+      const uname = studentName.trim();
+
+      await fetch(
+        `http://localhost:5000/api/users/${encodeURIComponent(uname)}/consent`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ termsAccepted, dataConsent }),
+        }
+      );
+
+      setShowTerms(false);
+
+      // 🔁 LOGIN AGAIN so backend sees termsAccepted = true
       const res = await fetch("http://localhost:5000/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,12 +87,17 @@ const StudentLoginPage = ({
         }),
       });
 
-      if (!res.ok) throw new Error("Login failed");
+      const data = await res.json();
+
+      if (data.needsConsent) {
+        alert("Consent not saved. Backend issue.");
+        setShowTerms(true);
+        return;
+      }
 
       setView("topic-select");
-    } catch (err) {
-      console.error(err);
-      alert("Login failed. Is the backend running?");
+    } catch (e) {
+      alert("Consent failed");
     } finally {
       setIsLoading(false);
     }
@@ -102,17 +153,21 @@ const StudentLoginPage = ({
         <select
           value={studentSection}
           onChange={(e) => setStudentSection(e.target.value)}
+          onFocus={fetchSections}
+          onMouseDown={fetchSections}
           className="w-full px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-700 text-white mb-4"
         >
           <option value="" disabled>
             Select your section
           </option>
 
-          {sections.map((sec) => (
-            <option key={sec._id} value={sec.name}>
-              {sec.name}
-            </option>
-          ))}
+          {sections
+            .filter((sec) => sec?.name)
+            .map((sec) => (
+              <option key={sec._id || sec.name} value={sec.name}>
+                {sec.name}
+              </option>
+            ))}
         </select>
 
         <button

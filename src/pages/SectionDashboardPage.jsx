@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import AnimatedBackground from '../components/AnimatedBackground';
 import QuestionCard from '../components/QuestionCard';
 import { TOPICS } from '../config/waybotConfig';
@@ -22,6 +22,54 @@ const SectionDashboardPage = ({
   logs,
 }) => {
   const [expandedTopics, setExpandedTopics] = useState({});
+
+  useEffect(() => {
+    const fetchSections = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/sections");
+        const data = await res.json();
+        setSections(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Fetch sections failed:", err);
+        setSections([]);
+      }
+    };
+
+    fetchSections();
+  }, []);
+
+
+  const handleAddSection = async () => {
+  const name = newSectionName.trim();
+  if (!name) return;
+
+  setSavingSection(true);
+  setSectionError("");
+
+  try {
+    const res = await fetch("http://localhost:5000/api/sections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setSectionError(data?.error || "Failed to create section");
+      return;
+    }
+
+    setSections((prev) => [...prev, data]); // ✅ updates UI immediately
+    setNewSectionName("");
+  } catch (err) {
+    console.error("Create section failed:", err);
+    setSectionError("Server error while creating section");
+  } finally {
+    setSavingSection(false);
+  }
+};
+
 
   // Filter analytics by this specific section
   const sectionAnalytics = useMemo(() => {
@@ -689,7 +737,7 @@ const SectionDashboardPage = ({
 
         {/* Recent Questions Panel */}
         <div className="bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-xl mb-4">
-          <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="p-1.5 sm:p-2 rounded-lg bg-indigo-500/20 border border-indigo-500/30">
                 <svg

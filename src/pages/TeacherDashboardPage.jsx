@@ -28,37 +28,70 @@ const TeacherDashboardPage = ({
   const [dashboardMode, setDashboardMode] = useState("all"); 
   // "all" | "sections" | "section-detail"
   const [activeSection, setActiveSection] = useState(null);
-  const [mySections, setMySections] = useState(() => {
-    const saved = localStorage.getItem('teacherSections');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [mySections, setMySections] = useState([]);
+
   const [newSectionName, setNewSectionName] = useState('');
   const [showAddSection, setShowAddSection] = useState(false);
 
-  // Save sections to localStorage
+  const fetchSections = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/sections");
+      const data = await res.json();
+      setMySections(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load sections", err);
+      setMySections([]);
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem('teacherSections', JSON.stringify(mySections));
-  }, [mySections]);
+    fetchSections();
+  }, []);
 
   // Add new section
-  const handleAddSection = () => {
-    if (newSectionName.trim()) {
-      setMySections([...mySections, {
-        id: Date.now().toString(),
-        name: newSectionName.trim(),
-        createdAt: new Date().toISOString(),
-      }]);
-      setNewSectionName('');
+  const handleAddSection = async () => {
+    const name = newSectionName.trim();
+    if (!name) return;
+
+    try {
+      const res = await fetch("http://localhost:5000/api/sections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to create section");
+
+      setMySections((prev) => [...prev, data]); // ✅ update UI instantly
+      setNewSectionName("");
       setShowAddSection(false);
+    } catch (err) {
+      console.error("Create section failed:", err);
+      alert("Failed to create section");
     }
   };
 
+
   // Delete section
-  const handleDeleteSection = (sectionId) => {
-    if (window.confirm('Are you sure you want to delete this section?')) {
-      setMySections(mySections.filter(s => s.id !== sectionId));
+  const handleDeleteSection = async (sectionId) => {
+    if (!window.confirm("Are you sure you want to delete this section?")) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/sections/${sectionId}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to delete section");
+
+      setMySections((prev) => prev.filter((s) => s._id !== sectionId)); // ✅ remove from UI instantly
+    } catch (err) {
+      console.error("Delete section failed:", err);
+      alert("Failed to delete section");
     }
   };
+
 
   // Extract unique sections from analytics
   const sections = useMemo(() => {
@@ -103,6 +136,17 @@ const TeacherDashboardPage = ({
       confusionRate,
     };
   }, [analytics, selectedSection]);
+
+  // Build a lookup: studentName -> section (from logs)
+  const studentSectionMap = useMemo(() => {
+    const map = {};
+    (logs || []).forEach((log) => {
+      if (log?.student && log?.section) {
+        map[log.student] = log.section;
+      }
+    });
+    return map;
+  }, [logs]);
 
   const toggleTopicExpand = (topicId) => {
     setExpandedTopics((prev) => ({
@@ -245,32 +289,6 @@ const TeacherDashboardPage = ({
                 <p className="text-slate-400 text-sm">Overview of all student activity</p>
               </div>
             )}
-
-          {/* Section Filter Tabs - Only show in "all" mode if there are multiple sections */}
-          {dashboardMode === "all" && sections.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
-              {sections.map((section) => (
-                <button
-                  key={section}
-                  onClick={() => setSelectedSection(section)}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
-                    selectedSection === section
-                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/25'
-                      : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/50'
-                  }`}
-                >
-                  {section === 'all' ? '🌐 All' : `📚 ${section}`}
-                  {section !== 'all' && (
-                    <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-900/50 text-xs">
-                      {(analytics?.byStudent || []).filter(
-                        (s) => (s.section || 'No Section') === section
-                      ).length}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* MY SECTIONS VIEW */}
@@ -308,7 +326,7 @@ const TeacherDashboardPage = ({
                     type="text"
                     value={newSectionName}
                     onChange={(e) => setNewSectionName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddSection()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
                     placeholder="Enter section name (e.g., Section A, Period 1)"
                     className="flex-1 bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition"
                   />
@@ -382,7 +400,7 @@ const TeacherDashboardPage = ({
 
                   return (
                     <div
-                      key={section.id}
+                      key={section._id}
                       className="group bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-violet-500/30 transition-all cursor-pointer relative overflow-hidden"
                       onClick={() => {
                         setActiveSection(section.name);
@@ -404,7 +422,7 @@ const TeacherDashboardPage = ({
                                 {section.name}
                               </h3>
                               <p className="text-slate-500 text-xs">
-                                Created {new Date(section.createdAt).toLocaleDateString()}
+                                Created {section.createdAt ? new Date(section.createdAt).toLocaleDateString() : "—"}
                               </p>
                             </div>
                           </div>
@@ -413,7 +431,7 @@ const TeacherDashboardPage = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteSection(section.id);
+                              handleDeleteSection(section._id);
                             }}
                             className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/10 border border-transparent hover:border-red-500/30 text-slate-500 hover:text-red-400 transition-all"
                           >
@@ -862,7 +880,7 @@ const TeacherDashboardPage = ({
                                 </td>
 
                                 <td className="py-3 px-2 text-center text-slate-300 font-medium">
-                                  {s.section || 'No Section'}
+                                  {s.section || studentSectionMap[s.student] || 'No Section'}
                                 </td>
                                 <td className="py-3 px-2 text-center">
                                   <span className="px-2.5 py-1 rounded-lg bg-slate-700/50 text-slate-300 font-semibold">

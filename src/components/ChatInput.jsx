@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import FeedbackButtons from './FeedbackButtons'; // Import the new component
 
 const ChatInput = ({ 
+  
   editorRef, 
   keyboardVisible, 
   sendMessage, 
@@ -12,6 +13,7 @@ const ChatInput = ({
   feedbackGiven,
   recordUnderstanding
 }) => {
+  const [hasInput, setHasInput] = useState(false);
   return (
     // INPUT AREA: flex-shrink-0 ensures it stays FIXED at the bottom
     <div
@@ -48,6 +50,12 @@ const ChatInput = ({
               suppressContentEditableWarning={true}
               className="w-full bg-slate-800 text-white p-3 rounded-xl outline-none min-h-[48px]"
               onClick={() => window.mathVirtualKeyboard?.hide()}
+              onInput={() => {
+                if (!editorRef.current) return;
+                const hasText = editorRef.current.innerText.trim() !== "";
+                const hasMath = editorRef.current.querySelectorAll("math-field").length > 0;
+                setHasInput(hasText || hasMath);
+              }}
               onKeyDown={(e) => {
                 // 1. SEND MESSAGE (Enter key) - Needs to call sendMessage prop
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -116,14 +124,8 @@ const ChatInput = ({
             onMouseDown={(e) => e.preventDefault()}   
             // Needs to call sendMessage prop
             onClick={sendMessage}
-            disabled={
-              isLoading ||
-              !editorRef.current ||
-              (
-                editorRef.current.innerText.trim() === "" &&
-                editorRef.current.querySelectorAll("math-field").length === 0
-              )
-            }
+            disabled={isLoading || !hasInput}
+
             className="
               px-6 py-3 rounded-xl 
               bg-gradient-to-r from-violet-600 to-indigo-600

@@ -350,7 +350,7 @@ function insertMathBox() {
 
         byStudentMap.set(log.student, {
           student: log.student,
-          section: u?.section || "No Section",   // ✅ add section
+          section: u?.section || log.section || "No Section",
           total: 0,
           confused: 0,
           lastActive: log.timestamp
@@ -446,15 +446,34 @@ function insertMathBox() {
   if (!studentName.trim() || !studentSection.trim()) return;
 
   try {
-    await fetch("http://localhost:5000/api/login", {
+    const loginRes = await fetch("http://localhost:5000/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: studentName.trim(),
-        section: studentSection.trim(),
-        consent: true
+        section: studentSection.trim()
       })
     });
+
+    const loginData = await loginRes.json();
+    console.log("LOGIN DATA:", loginData);
+    console.log("LOGIN USERNAME SENT:", studentName.trim(), "SECTION:", studentSection.trim());
+
+    // ✅ show Terms only if user has not accepted yet
+    if (loginData.needsConsent) {
+      setShowTerms(true);
+      return;
+    }
+
+  setUsers((prev) => {
+    const uname = studentName.trim();
+    const sec = studentSection.trim();
+    const exists = prev.some((u) => u.username === uname);
+    if (exists) {
+      return prev.map((u) => (u.username === uname ? { ...u, section: sec } : u));
+    }
+    return [...prev, { username: uname, section: sec }];
+  });
 
   const res = await fetch("http://localhost:5000/api/users");
     const data = await res.json();
@@ -851,18 +870,18 @@ const handleOpenContextMenu = () => {
 
  // STUDENT LOGIN REPLACEMENT
   if (view === "student-login") {
-    return (
-      <StudentLoginPage
-        setView={setView}
-        studentName={studentName}
-        setStudentName={setStudentName}
-        studentSection={studentSection}
-        setStudentSection={setStudentSection}
-        isLoading={isLoading}
-        setIsLoading={setIsLoading}
-      />
-    );
-  }
+  return (
+    <StudentLoginPage
+      setView={setView}
+      studentName={studentName}
+      setStudentName={setStudentName}
+      studentSection={studentSection}
+      setStudentSection={setStudentSection}
+      isLoading={isLoading}
+      setIsLoading={setIsLoading}
+    />
+  );
+}
 
   // TOPIC SELECT REPLACEMENT
   if (view === "topic-select") {

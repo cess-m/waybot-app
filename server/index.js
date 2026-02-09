@@ -44,7 +44,10 @@ const UserSchema = new mongoose.Schema({
   username: String,
   section: { type: String, default: "No Section" },
   joinedAt: { type: Date, default: Date.now },
-  lastActive: { type: Date, default: Date.now }
+  lastActive: { type: Date, default: Date.now },
+  termsAccepted: { type: Boolean, default: false },
+  dataConsent: { type: Boolean, default: false },
+  consentAnsweredAt: { type: Date, default: null }
 });
 const User = mongoose.model("User", UserSchema);
 // 3. API ROUTES (The Endpoints)
@@ -150,19 +153,57 @@ app.post("/api/login", async (req, res) => {
       { username },
       {
         $set: {
-          lastActive: Date.now(),
-          ...(section ? { section } : {})
+          lastActive: new Date(),
+          ...(section ? { section } : {}),
         },
-        $setOnInsert: { joinedAt: Date.now() }
+        $setOnInsert: { joinedAt: new Date() },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    res.json(user);
+    const needsConsent = !(user.termsAccepted && user.dataConsent);
+
+    console.log("LOGIN BODY:", req.body);
+    console.log("LOGIN RESULT user:", user);
+    console.log("LOGIN needsConsent:", needsConsent);
+
+    return res.json({ user, needsConsent });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("LOGIN ERROR:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
+
+
+app.put("/api/users/:username/consent", async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { termsAccepted, dataConsent } = req.body;
+
+    const user = await User.findOneAndUpdate(
+      { username },
+      {
+        $set: {
+          termsAccepted: !!termsAccepted,
+          dataConsent: !!dataConsent,
+          consentAnsweredAt: new Date(),
+          lastActive: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    console.log("CONSENT PARAM username:", username);
+    console.log("CONSENT BODY:", req.body);
+    console.log("CONSENT UPDATED user:", user);
+
+    return res.json({ ok: true, user });
+  } catch (err) {
+    console.error("CONSENT ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 
 
 // GET: Get all students
