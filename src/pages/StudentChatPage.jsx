@@ -109,7 +109,7 @@ const StudentChatPage = ({
 
       <div
         id="chat-scroll-area"
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 custom-scrollbar relative z-0"
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-6 custom-scrollbar relative z-0"
         onClick={() => window.mathVirtualKeyboard?.hide()}
       >
        
@@ -118,49 +118,52 @@ const StudentChatPage = ({
             const isStudent = m.sender === "student";
             const isEditingThis = editingMsgId === m.id;
 
-            return (
-              <div key={m.id} className="relative group">
-                <ChatBubble m={m} />
-
-                {isStudent && m.id !== "welcome" && (
-                  <button
-                    type="button"
-                    onClick={() => onEditMessage?.(m)}
-                    disabled={isLoading}
-                    className={
-                      "absolute -right-10 top-1/2 -translate-y-1/2 " +
-                      "p-2 rounded-lg bg-slate-800/80 border border-slate-700 " +
-                      "opacity-0 group-hover:opacity-100 transition " +
-                      "hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                    }
-                    title="Edit message"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      className="w-4 h-4 text-slate-200"
+          return (
+            <div
+              key={m.id}
+              className="w-full"
+            >
+              
+              <div className={`flex w-full ${isStudent ? "justify-end" : "justify-start"}`}>
+                {isStudent && m.id !== "welcome" ? (
+                  <div className="group flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onEditMessage?.(m)}
+                      disabled={isLoading}
+                      className={
+                        "p-2 rounded-lg bg-slate-800/80 border border-slate-700 " +
+                        "opacity-100 md:opacity-0 md:group-hover:opacity-100 transition " +
+                        "hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                      }
+                      title="Edit message"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.7 17.59 4 19l1.41-4.7L16.862 3.487Z"
-                      />
-                    </svg>
-                  </button>
-                )}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="w-4 h-4 text-slate-200"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.7 17.59 4 19l1.41-4.7L16.862 3.487Z"
+                        />
+                      </svg>
+                    </button>
 
-                {isEditingThis && (
-                  <div className="mt-2 text-xs text-violet-300">
-                    Editing this message
+                    <ChatBubble m={m} />
                   </div>
+                ) : (
+                  <ChatBubble m={m} />
                 )}
-              </div>
-            );
-          })}
+              </div>            
+            </div>
+          );
 
+          })}
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-slate-800/80 rounded-2xl rounded-bl-md px-4 py-3 border border-slate-700/50">

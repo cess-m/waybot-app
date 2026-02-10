@@ -17,7 +17,7 @@ import StudentChatPage from "./pages/StudentChatPage";
 import TeacherLoginPage from "./pages/TeacherLoginPage";
 import TeacherDashboardPage from "./pages/TeacherDashboardPage";
 import { cleanupText } from "./utils/cleanupText";
-
+import { createRunLLMOnce } from "./utils/runLLMOnce";
 
 async function callLLM({ cleanMessages, questionText, studentName, currentTopic, TUTOR_SYSTEM_PROMPT, VITE_GEMINI_API_KEY }) {
   
@@ -59,39 +59,62 @@ async function callLLM({ cleanMessages, questionText, studentName, currentTopic,
     )
   ];
   
-  // CRITICAL FIX: Ensure the final message is the user's latest query
-  // Since we use the massive system instruction as the first 'user' message, 
-  // we must ensure the final message is the actual user question if history is present.
-  if (cleanMessages.length > 0) {
-     // The last message in cleanMessages is the latest user question
-     contents.push({
-         role: "user",
-         parts: [{ text: cleanMessages[cleanMessages.length - 1].content }]
-     });
-  }
-
 
   const response = await fetch(geminiEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: contents, // <-- Use the structured contents array
-    }),
-  });
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ contents }),
+});
 
-  const data = await response.json();
-  console.log("Gemini raw response:", data);
+let data;
+try {
+  data = await response.json();
+} catch (e) {
+  console.error("Gemini response not JSON:", e);
+  return "Oops! The AI returned an unreadable response. Please try again.";
+}
 
-  const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+console.log("Gemini raw response:", data);
 
-  if (!aiText) {
-    // Check if the response was blocked and log the reason (safety is common)
-    const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason;
-    console.error("Gemini API Error details - Block Reason:", blockReason);
-    return `Oops! I received an error from the AI (Reason: ${blockReason || 'Unknown'}). Please ask again or try a simpler question.`;
+// ✅ Handle HTTP errors first (429, 401, etc.)
+if (!response.ok) {
+  const status = response.status;
+  const apiMessage = data?.error?.message || data?.message || "Unknown API error";
+
+  console.error("Gemini HTTP Error:", status, apiMessage);
+
+  if (status === 429) {
+    return "Too many requests right now. Please wait 30–60 seconds and try again.";
   }
 
-  return aiText;
+  if (status === 401 || status === 403) {
+    return "API key or quota issue. Please check your Gemini key and quota settings.";
+  }
+
+  return `AI error (${status}): ${apiMessage}`;
+}
+
+// ✅ Safely extract AI text
+const aiText = data?.candidates?.[0]?.content?.parts
+  ?.map((p) => p.text)
+  .filter(Boolean)
+  .join("\n");
+
+if (!aiText) {
+  const blockReason = data?.promptFeedback?.blockReason;
+  const finishReason = data?.candidates?.[0]?.finishReason;
+
+  console.error("Gemini returned no text:", { blockReason, finishReason, data });
+
+  if (blockReason) {
+    return `Oops! The request was blocked (Reason: ${blockReason}). Try a simpler question.`;
+  }
+
+  return "Oops! The AI returned an empty reply. Please try again.";
+}
+
+return aiText;
+
 }
 
 export default function Waybot() {
@@ -123,7 +146,12 @@ export default function Waybot() {
   const editorRef = useRef(null);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const sendingRef = useRef(false);
+  const feedbackRef = useRef(false);
   
+  const runLLMOnce = useMemo(() => {
+    return createRunLLMOnce({ callLLM, delayMs: 1500 });
+  }, []);
 
 
   // Configure main hidden mathfield to use custom keyboard container
@@ -645,26 +673,27 @@ const handleOpenContextMenu = () => {
     if (editorRef.current) editorRef.current.innerHTML = "";
   };
 
-  const sendMessage = async () => {
-  if (!editorRef.current) return;
+  // In Waybot.jsx, REPLACE the sendMessage function with this optimized version:
+const sendMessage = async () => {
+  // ✅ HARD LOCK: prevents double sending
+  if (sendingRef.current) return;
+  sendingRef.current = true;
 
- // --- REPLACEMENT START ---
-  const { cleanText, rawHtml } = cleanupText(editorRef.current);
+  try {
+    if (!editorRef.current) return;
 
-  // Validation: If both text and HTML are empty, don't send
-  if (!cleanText && !rawHtml) return;
-  // --- REPLACEMENT END ---
+    const { cleanText, rawHtml } = cleanupText(editorRef.current);
 
-  // Close Keyboard
-  setKeyboardVisible(false);
-  if (window.mathVirtualKeyboard) {
-    window.mathVirtualKeyboard.hide();
-  }
+    if (!cleanText && !rawHtml) return;
 
-  // CLEAR THE EDITOR
-  editorRef.current.innerHTML = "";
+    // Close Keyboard
+    setKeyboardVisible(false);
+    if (window.mathVirtualKeyboard) {
+      window.mathVirtualKeyboard.hide();
+    }
 
-  // 2) Add or UPDATE the student's message in the UI
+    editorRef.current.innerHTML = "";
+
     let userMessage = {
       id: Date.now() + "-user",
       sender: "student",
@@ -675,174 +704,62 @@ const handleOpenContextMenu = () => {
     let newMessages = [];
 
     if (editingMsgId) {
-      // update existing message
       newMessages = messages.map((m) =>
         m.id === editingMsgId ? { ...m, html: rawHtml, text: cleanText } : m
       );
 
-      // remove bot replies after that edited message (so we can regenerate)
       const idx = newMessages.findIndex((m) => m.id === editingMsgId);
       newMessages = idx >= 0 ? newMessages.slice(0, idx + 1) : newMessages;
 
-      // use the edited message as "userMessage"
       userMessage = newMessages[newMessages.length - 1];
 
-      // exit edit mode
       setEditingMsgId(null);
       setEditingOriginalHtml("");
     } else {
-      // normal new message
       newMessages = [...messages, userMessage];
     }
 
     setMessages(newMessages);
 
-
-    const questionText = cleanText; // Send the readable text to AI
+    const questionText = cleanText;
     setInput("");
 
-    // clear the MathLive field refs if any exist in memory
     if (mathFieldRef.current) {
       mathFieldRef.current.setValue("");
     }
 
     setIsLoading(true);
 
-  // 3) Log this question for analytics
-  const logEntry = {
-    id: Date.now().toString(),
-    student: studentName.trim(),
-    section: studentSection.trim(),
-    topicId: selectedTopic,
-    concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
-    explanation: null,
-    question: questionText, 
-    confused: null,
-    timestamp: Date.now(),
-  };
+    const logEntry = {
+      id: Date.now().toString(),
+      student: studentName.trim(),
+      section: studentSection.trim(),
+      topicId: selectedTopic,
+      concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
+      explanation: null,
+      question: questionText,
+      confused: null,
+      timestamp: Date.now(),
+    };
 
-  setLogs((prev) => [...prev, logEntry]);
+    setLogs((prev) => [...prev, logEntry]);
 
-  // SAVE LOG TO SERVER
-  fetch("http://localhost:5000/api/logs", {
+    fetch("http://localhost:5000/api/logs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(logEntry)
-  }).catch(err => console.error("Log save failed", err));
-
-  try {
-    // 3) Convert messages into generic chat format
-    const apiMessages = newMessages
-      .filter((m) => m.id !== "welcome")
-      .map((m) => ({
-        role: m.sender === "student" ? "user" : "assistant",
-        content: m.text, // Sends the processed text
-      }));
-
-    const cleanMessages = [];
-    for (const msg of apiMessages) {
-      if (cleanMessages.length === 0 && msg.role === "assistant") continue;
-      if (
-        cleanMessages.length > 0 &&
-        cleanMessages[cleanMessages.length - 1].role === msg.role
-      ) {
-        cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
-        continue;
-      }
-      cleanMessages.push(msg);
-    }
-
-    // 4) Call the LLM
-    const aiText = await callLLM({
-    cleanMessages,
-    questionText,
-    studentName,
-    currentTopic,
-    TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
-    VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
-});
-
-    // Attach AI explanation to log entry
-    setLogs((prev) =>
-      prev.map((log) =>
-        log.id === logEntry.id ? { ...log, explanation: aiText } : log
-      )
-    );
-
-    // Save explanation to backend
-    fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ explanation: aiText })
-    }).catch(err => console.error("Explanation save failed", err));
-
-
-    // 5) Add the bot's reply to chat
-    const botMessage = {
-      id: Date.now() + "-bot",
-      sender: "bot",
-      text: aiText,
-      logId: logEntry.id,
-    };
-    const finalMessages = [...newMessages, botMessage];
-    setFeedbackStatus(null);
-    setMessages(finalMessages);
-    saveChatHistory(finalMessages);
-  } catch (e) {
-    console.error("API Error:", e);
-    const errorMsg = {
-      id: Date.now() + "-error",
-      sender: "bot",
-      text:
-        "Oops! I couldn't connect. Please try again in a moment. 🙁",
-      logId: logEntry.id,
-    };
-    setMessages([...newMessages, errorMsg]);
-  }
-
-  setIsLoading(false);
-};
-
-  
-
-const recordUnderstanding = async (confused, logId) => {
-    // 1) Update logs for analytics (Local UI)
-    setLogs((prev) =>
-      prev.map((log) =>
-        log.id === logId ? { ...log, confused } : log
-      )
-    );
-
-    // 2) Update local feedback status
-    setFeedbackStatus(confused ? "confused" : "got-it");
-
-    // 3) SEND UPDATE TO BACKEND
-    fetch(`http://localhost:5000/api/logs/${logId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confused })
-    }).catch(err => console.error("Feedback save failed", err));
-
-    // 4) Add student's feedback message
-    const feedbackLabel = confused ? "Still confused" : "Got it";
-    const studentMsg = {
-      id: Date.now() + "-feedback-student",
-      sender: "student",
-      text: feedbackLabel,
-    };
-
-    const updatedWithStudent = [...messages, studentMsg];
-    setMessages(updatedWithStudent);
-    setIsLoading(true);
+      body: JSON.stringify(logEntry),
+    }).catch((err) => console.error("Log save failed", err));
 
     try {
-      // 5) Get AI's contextual response
-      const apiMessages = updatedWithStudent
+      // Only send last 10 messages to save tokens
+      const recentMessages = newMessages
         .filter((m) => m.id !== "welcome")
-        .map((m) => ({
-          role: m.sender === "student" ? "user" : "assistant",
-          content: m.text,
-        }));
+        .slice(-10);
+
+      const apiMessages = recentMessages.map((m) => ({
+        role: m.sender === "student" ? "user" : "assistant",
+        content: m.text,
+      }));
 
       const cleanMessages = [];
       for (const msg of apiMessages) {
@@ -857,7 +774,115 @@ const recordUnderstanding = async (confused, logId) => {
         cleanMessages.push(msg);
       }
 
-      const aiText = await callLLM({
+      const aiText = await runLLMOnce({
+        cleanMessages,
+        questionText,
+        studentName,
+        currentTopic,
+        TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
+        VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
+      });
+
+      setLogs((prev) =>
+        prev.map((log) =>
+          log.id === logEntry.id ? { ...log, explanation: aiText } : log
+        )
+      );
+
+      fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ explanation: aiText }),
+      }).catch((err) => console.error("Explanation save failed", err));
+
+      const botMessage = {
+        id: Date.now() + "-bot",
+        sender: "bot",
+        text: aiText,
+        logId: logEntry.id,
+      };
+
+      const finalMessages = [...newMessages, botMessage];
+      setFeedbackStatus(null);
+      setMessages(finalMessages);
+      saveChatHistory(finalMessages);
+    } catch (e) {
+      console.error("API Error:", e);
+      const errorMsg = {
+        id: Date.now() + "-error",
+        sender: "bot",
+        text: "Oops! I couldn't connect. Please try again in a moment. 🙁",
+        logId: logEntry.id,
+      };
+      setMessages([...newMessages, errorMsg]);
+    }
+
+    setIsLoading(false);
+  } finally {
+    // ✅ ALWAYS release the lock
+    sendingRef.current = false;
+  }
+};
+  
+
+// In Waybot.jsx, REPLACE recordUnderstanding with this optimized version
+
+const recordUnderstanding = async (confused, logId) => {
+  // ✅ HARD LOCK: prevents double feedback spam
+  if (feedbackRef.current) return;
+  feedbackRef.current = true;
+
+  try {
+    if (isLoading) return;
+
+    setLogs((prev) =>
+      prev.map((log) => (log.id === logId ? { ...log, confused } : log))
+    );
+
+    setFeedbackStatus(confused ? "confused" : "got-it");
+
+    fetch(`http://localhost:5000/api/logs/${logId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confused }),
+    }).catch((err) => console.error("Feedback save failed", err));
+
+    const feedbackLabel = confused ? "Still confused" : "Got it";
+    const studentMsg = {
+      id: Date.now() + "-feedback-student",
+      sender: "student",
+      text: feedbackLabel,
+    };
+
+    const updatedWithStudent = [...messages, studentMsg];
+    setMessages(updatedWithStudent);
+    setIsLoading(true);
+
+    try {
+      // Only send last 10 messages
+      const recentMessages = updatedWithStudent
+        .filter((m) => m.id !== "welcome")
+        .slice(-10);
+
+      const apiMessages = recentMessages.map((m) => ({
+        role: m.sender === "student" ? "user" : "assistant",
+        content: m.text,
+      }));
+
+      const cleanMessages = [];
+      for (const msg of apiMessages) {
+        if (cleanMessages.length === 0 && msg.role === "assistant") continue;
+        if (
+          cleanMessages.length > 0 &&
+          cleanMessages[cleanMessages.length - 1].role === msg.role
+        ) {
+          cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
+          continue;
+        }
+        cleanMessages.push(msg);
+      }
+
+      const aiText = await runLLMOnce({
         cleanMessages,
         questionText: feedbackLabel,
         studentName,
@@ -866,7 +891,6 @@ const recordUnderstanding = async (confused, logId) => {
         VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
       });
 
-      // 6) Add bot's response
       const botMsg = {
         id: Date.now() + "-feedback-bot",
         sender: "bot",
@@ -887,7 +911,12 @@ const recordUnderstanding = async (confused, logId) => {
     }
 
     setIsLoading(false);
-  };
+  } finally {
+    // ✅ ALWAYS release the lock
+    feedbackRef.current = false;
+  }
+};
+
 
   const clearAllData = () => {
     toast("Reset all WayBot data?", {

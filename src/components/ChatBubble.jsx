@@ -15,27 +15,24 @@ const ChatBubble = ({ m }) => {
     : "justify-start";
 
   return (
-    <div key={m.id} className={`flex ${layoutClasses}`}>
-      <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${bubbleClasses}`}>
-        {/* We use m.html for math-editor inputs, which contain baked math-field tags.
-            Otherwise, we use m.text with autoLatex for normal text/AI responses. */}
-        {m.html
-          ? (
-              <div
-                className="prose prose-invert"
-                dangerouslySetInnerHTML={{ __html: m.html }}
-                style={{ lineHeight: "1.7", fontSize: "1rem" }}
-              />
-            )
-          : m.text.split("\n").map((line, idx) => (
-              <p key={idx} className={idx > 0 ? "mt-4" : ""} style={{ lineHeight: "1.7" }}>
-                <Latex>{autoLatex(line)}</Latex>
-              </p>
-            ))
-        }
-      </div>
-    </div>
-  );
+  <div className={`inline-block max-w-[85%] rounded-2xl px-4 py-3 ${bubbleClasses}`}>
+    {m.html
+      ? (
+          <div
+            className="prose prose-invert"
+            dangerouslySetInnerHTML={{ __html: m.html }}
+            style={{ lineHeight: "1.7", fontSize: "1rem" }}
+          />
+        )
+      : m.text.split("\n").map((line, idx) => (
+          <p key={idx} className={idx > 0 ? "mt-4" : ""} style={{ lineHeight: "1.7" }}>
+            <Latex>{autoLatex(line)}</Latex>
+          </p>
+        ))
+    }
+  </div>
+);
+
 };
 
 export default ChatBubble;
