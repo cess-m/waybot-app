@@ -146,6 +146,8 @@ export default function Waybot() {
   const editorRef = useRef(null);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const sendingRef = useRef(false);
+  const feedbackRef = useRef(false);
   
   const runLLMOnce = useMemo(() => {
     return createRunLLMOnce({ callLLM, delayMs: 1500 });
@@ -672,233 +674,249 @@ const handleOpenContextMenu = () => {
   };
 
   // In Waybot.jsx, REPLACE the sendMessage function with this optimized version:
-
 const sendMessage = async () => {
-  if (isLoading) return;
-  if (!editorRef.current) return;
-
-  const { cleanText, rawHtml } = cleanupText(editorRef.current);
-
-  if (!cleanText && !rawHtml) return;
-
-  // Close Keyboard
-  setKeyboardVisible(false);
-  if (window.mathVirtualKeyboard) {
-    window.mathVirtualKeyboard.hide();
-  }
-
-  editorRef.current.innerHTML = "";
-
-  let userMessage = {
-    id: Date.now() + "-user",
-    sender: "student",
-    html: rawHtml,
-    text: cleanText,
-  };
-
-  let newMessages = [];
-
-  if (editingMsgId) {
-    newMessages = messages.map((m) =>
-      m.id === editingMsgId ? { ...m, html: rawHtml, text: cleanText } : m
-    );
-
-    const idx = newMessages.findIndex((m) => m.id === editingMsgId);
-    newMessages = idx >= 0 ? newMessages.slice(0, idx + 1) : newMessages;
-
-    userMessage = newMessages[newMessages.length - 1];
-
-    setEditingMsgId(null);
-    setEditingOriginalHtml("");
-  } else {
-    newMessages = [...messages, userMessage];
-  }
-
-  setMessages(newMessages);
-
-  const questionText = cleanText;
-  setInput("");
-
-  if (mathFieldRef.current) {
-    mathFieldRef.current.setValue("");
-  }
-
-  setIsLoading(true);
-
-  const logEntry = {
-    id: Date.now().toString(),
-    student: studentName.trim(),
-    section: studentSection.trim(),
-    topicId: selectedTopic,
-    concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
-    explanation: null,
-    question: questionText, 
-    confused: null,
-    timestamp: Date.now(),
-  };
-
-  setLogs((prev) => [...prev, logEntry]);
-
-  fetch("http://localhost:5000/api/logs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(logEntry)
-  }).catch(err => console.error("Log save failed", err));
+  // ✅ HARD LOCK: prevents double sending
+  if (sendingRef.current) return;
+  sendingRef.current = true;
 
   try {
-    // 🔥 OPTIMIZATION 1: Only send last 10 messages to save tokens
-    const recentMessages = newMessages
-      .filter((m) => m.id !== "welcome")
-      .slice(-10); // 👈 LIMIT TO LAST 10 MESSAGES
+    if (!editorRef.current) return;
 
-    const apiMessages = recentMessages.map((m) => ({
-      role: m.sender === "student" ? "user" : "assistant",
-      content: m.text,
-    }));
+    const { cleanText, rawHtml } = cleanupText(editorRef.current);
 
-    const cleanMessages = [];
-    for (const msg of apiMessages) {
-      if (cleanMessages.length === 0 && msg.role === "assistant") continue;
-      if (
-        cleanMessages.length > 0 &&
-        cleanMessages[cleanMessages.length - 1].role === msg.role
-      ) {
-        cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
-        continue;
-      }
-      cleanMessages.push(msg);
+    if (!cleanText && !rawHtml) return;
+
+    // Close Keyboard
+    setKeyboardVisible(false);
+    if (window.mathVirtualKeyboard) {
+      window.mathVirtualKeyboard.hide();
     }
 
-    const aiText = await runLLMOnce({
-      cleanMessages,
-      questionText,
-      studentName,
-      currentTopic,
-      TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
-      VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
-    });
+    editorRef.current.innerHTML = "";
 
-    setLogs((prev) =>
-      prev.map((log) =>
-        log.id === logEntry.id ? { ...log, explanation: aiText } : log
-      )
-    );
+    let userMessage = {
+      id: Date.now() + "-user",
+      sender: "student",
+      html: rawHtml,
+      text: cleanText,
+    };
 
-    fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
-      method: "PUT",
+    let newMessages = [];
+
+    if (editingMsgId) {
+      newMessages = messages.map((m) =>
+        m.id === editingMsgId ? { ...m, html: rawHtml, text: cleanText } : m
+      );
+
+      const idx = newMessages.findIndex((m) => m.id === editingMsgId);
+      newMessages = idx >= 0 ? newMessages.slice(0, idx + 1) : newMessages;
+
+      userMessage = newMessages[newMessages.length - 1];
+
+      setEditingMsgId(null);
+      setEditingOriginalHtml("");
+    } else {
+      newMessages = [...messages, userMessage];
+    }
+
+    setMessages(newMessages);
+
+    const questionText = cleanText;
+    setInput("");
+
+    if (mathFieldRef.current) {
+      mathFieldRef.current.setValue("");
+    }
+
+    setIsLoading(true);
+
+    const logEntry = {
+      id: Date.now().toString(),
+      student: studentName.trim(),
+      section: studentSection.trim(),
+      topicId: selectedTopic,
+      concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
+      explanation: null,
+      question: questionText,
+      confused: null,
+      timestamp: Date.now(),
+    };
+
+    setLogs((prev) => [...prev, logEntry]);
+
+    fetch("http://localhost:5000/api/logs", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ explanation: aiText })
-    }).catch(err => console.error("Explanation save failed", err));
+      body: JSON.stringify(logEntry),
+    }).catch((err) => console.error("Log save failed", err));
 
-    const botMessage = {
-      id: Date.now() + "-bot",
-      sender: "bot",
-      text: aiText,
-      logId: logEntry.id,
-    };
-    const finalMessages = [...newMessages, botMessage];
-    setFeedbackStatus(null);
-    setMessages(finalMessages);
-    saveChatHistory(finalMessages);
-  } catch (e) {
-    console.error("API Error:", e);
-    const errorMsg = {
-      id: Date.now() + "-error",
-      sender: "bot",
-      text: "Oops! I couldn't connect. Please try again in a moment. 🙁",
-      logId: logEntry.id,
-    };
-    setMessages([...newMessages, errorMsg]);
+    try {
+      // Only send last 10 messages to save tokens
+      const recentMessages = newMessages
+        .filter((m) => m.id !== "welcome")
+        .slice(-10);
+
+      const apiMessages = recentMessages.map((m) => ({
+        role: m.sender === "student" ? "user" : "assistant",
+        content: m.text,
+      }));
+
+      const cleanMessages = [];
+      for (const msg of apiMessages) {
+        if (cleanMessages.length === 0 && msg.role === "assistant") continue;
+        if (
+          cleanMessages.length > 0 &&
+          cleanMessages[cleanMessages.length - 1].role === msg.role
+        ) {
+          cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
+          continue;
+        }
+        cleanMessages.push(msg);
+      }
+
+      const aiText = await runLLMOnce({
+        cleanMessages,
+        questionText,
+        studentName,
+        currentTopic,
+        TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
+        VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
+      });
+
+      setLogs((prev) =>
+        prev.map((log) =>
+          log.id === logEntry.id ? { ...log, explanation: aiText } : log
+        )
+      );
+
+      fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ explanation: aiText }),
+      }).catch((err) => console.error("Explanation save failed", err));
+
+      const botMessage = {
+        id: Date.now() + "-bot",
+        sender: "bot",
+        text: aiText,
+        logId: logEntry.id,
+      };
+
+      const finalMessages = [...newMessages, botMessage];
+      setFeedbackStatus(null);
+      setMessages(finalMessages);
+      saveChatHistory(finalMessages);
+    } catch (e) {
+      console.error("API Error:", e);
+      const errorMsg = {
+        id: Date.now() + "-error",
+        sender: "bot",
+        text: "Oops! I couldn't connect. Please try again in a moment. 🙁",
+        logId: logEntry.id,
+      };
+      setMessages([...newMessages, errorMsg]);
+    }
+
+    setIsLoading(false);
+  } finally {
+    // ✅ ALWAYS release the lock
+    sendingRef.current = false;
   }
-
-  setIsLoading(false);
 };
   
 
 // In Waybot.jsx, REPLACE recordUnderstanding with this optimized version
 
 const recordUnderstanding = async (confused, logId) => {
-  if (isLoading) return;
-
-  setLogs((prev) =>
-    prev.map((log) =>
-      log.id === logId ? { ...log, confused } : log
-    )
-  );
-
-  setFeedbackStatus(confused ? "confused" : "got-it");
-
-  fetch(`http://localhost:5000/api/logs/${logId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confused })
-  }).catch(err => console.error("Feedback save failed", err));
-
-  const feedbackLabel = confused ? "Still confused" : "Got it";
-  const studentMsg = {
-    id: Date.now() + "-feedback-student",
-    sender: "student",
-    text: feedbackLabel,
-  };
-
-  const updatedWithStudent = [...messages, studentMsg];
-  setMessages(updatedWithStudent);
-  setIsLoading(true);
+  // ✅ HARD LOCK: prevents double feedback spam
+  if (feedbackRef.current) return;
+  feedbackRef.current = true;
 
   try {
-    // 🔥 OPTIMIZATION: Only send last 10 messages
-    const recentMessages = updatedWithStudent
-      .filter((m) => m.id !== "welcome")
-      .slice(-10); // 👈 LIMIT TO LAST 10 MESSAGES
+    if (isLoading) return;
 
-    const apiMessages = recentMessages.map((m) => ({
-      role: m.sender === "student" ? "user" : "assistant",
-      content: m.text,
-    }));
+    setLogs((prev) =>
+      prev.map((log) => (log.id === logId ? { ...log, confused } : log))
+    );
 
-    const cleanMessages = [];
-    for (const msg of apiMessages) {
-      if (cleanMessages.length === 0 && msg.role === "assistant") continue;
-      if (
-        cleanMessages.length > 0 &&
-        cleanMessages[cleanMessages.length - 1].role === msg.role
-      ) {
-        cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
-        continue;
+    setFeedbackStatus(confused ? "confused" : "got-it");
+
+    fetch(`http://localhost:5000/api/logs/${logId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confused }),
+    }).catch((err) => console.error("Feedback save failed", err));
+
+    const feedbackLabel = confused ? "Still confused" : "Got it";
+    const studentMsg = {
+      id: Date.now() + "-feedback-student",
+      sender: "student",
+      text: feedbackLabel,
+    };
+
+    const updatedWithStudent = [...messages, studentMsg];
+    setMessages(updatedWithStudent);
+    setIsLoading(true);
+
+    try {
+      // Only send last 10 messages
+      const recentMessages = updatedWithStudent
+        .filter((m) => m.id !== "welcome")
+        .slice(-10);
+
+      const apiMessages = recentMessages.map((m) => ({
+        role: m.sender === "student" ? "user" : "assistant",
+        content: m.text,
+      }));
+
+      const cleanMessages = [];
+      for (const msg of apiMessages) {
+        if (cleanMessages.length === 0 && msg.role === "assistant") continue;
+        if (
+          cleanMessages.length > 0 &&
+          cleanMessages[cleanMessages.length - 1].role === msg.role
+        ) {
+          cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
+          continue;
+        }
+        cleanMessages.push(msg);
       }
-      cleanMessages.push(msg);
+
+      const aiText = await runLLMOnce({
+        cleanMessages,
+        questionText: feedbackLabel,
+        studentName,
+        currentTopic,
+        TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
+        VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
+      });
+
+      const botMsg = {
+        id: Date.now() + "-feedback-bot",
+        sender: "bot",
+        text: aiText,
+      };
+
+      const finalMessages = [...updatedWithStudent, botMsg];
+      setMessages(finalMessages);
+      saveChatHistory(finalMessages);
+    } catch (e) {
+      console.error("Feedback response error:", e);
+      const errorMsg = {
+        id: Date.now() + "-feedback-error",
+        sender: "bot",
+        text: "Sorry, I couldn't process that. Please try again.",
+      };
+      setMessages([...updatedWithStudent, errorMsg]);
     }
 
-    const aiText = await runLLMOnce({
-      cleanMessages,
-      questionText: feedbackLabel,
-      studentName,
-      currentTopic,
-      TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
-      VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
-    });
-
-    const botMsg = {
-      id: Date.now() + "-feedback-bot",
-      sender: "bot",
-      text: aiText,
-    };
-
-    const finalMessages = [...updatedWithStudent, botMsg];
-    setMessages(finalMessages);
-    saveChatHistory(finalMessages);
-  } catch (e) {
-    console.error("Feedback response error:", e);
-    const errorMsg = {
-      id: Date.now() + "-feedback-error",
-      sender: "bot",
-      text: "Sorry, I couldn't process that. Please try again.",
-    };
-    setMessages([...updatedWithStudent, errorMsg]);
+    setIsLoading(false);
+  } finally {
+    // ✅ ALWAYS release the lock
+    feedbackRef.current = false;
   }
-
-  setIsLoading(false);
 };
+
 
   const clearAllData = () => {
     toast("Reset all WayBot data?", {
