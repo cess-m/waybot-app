@@ -23,12 +23,12 @@ const ChatBubble = ({ m }) => {
           ? (
               <div
                 className="prose prose-invert"
-                dangerouslySetInnerHTML={{ __html: marked.parse(m.html) }}
+                dangerouslySetInnerHTML={{ __html: m.html }}
                 style={{ lineHeight: "1.7", fontSize: "1rem" }}
               />
             )
           : m.text.split("\n").map((line, idx) => (
-              <p key={idx} className={idx > 0 ? "mt-2" : ""}>
+              <p key={idx} className={idx > 0 ? "mt-4" : ""} style={{ lineHeight: "1.7" }}>
                 <Latex>{autoLatex(line)}</Latex>
               </p>
             ))

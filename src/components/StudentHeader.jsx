@@ -1,6 +1,46 @@
 import React from 'react';
+import { toast } from "sonner";
 
 const StudentHeader = ({ currentTopic, studentName, setView, handleClearChat }) => {
+  const confirmClearChat = () => {
+    toast("Delete this chat?", {
+      description: "This will permanently remove your chat history.",
+      action: {
+        label: "Yes, delete",
+        onClick: () => {
+          handleClearChat();
+          toast.success("Chat deleted");
+        },
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => toast.message("Cancelled"),
+      },
+    });
+  };
+
+  // Same icon mapping from TopicSelectPage
+  const getTopicIcon = (topicId) => {
+    const icons = {
+      limits: (
+        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+      ),
+      differentiation: (
+        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+        </svg>
+      ),
+      integration: (
+        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+        </svg>
+      )
+    };
+    return icons[topicId] || icons.limits;
+  };
+
   return (
     // HEADER: flex-shrink-0 keeps it from squishing
     <div className="flex-shrink-0 px-4 py-3 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/50 flex items-center gap-3 relative z-10">
@@ -21,9 +61,11 @@ const StudentHeader = ({ currentTopic, studentName, setView, handleClearChat }) 
         </svg>
       </button>
       
-      {/* Topic Icon */}
-      <div className={"w-10 h-10 rounded-xl bg-gradient-to-br " + currentTopic.color + " flex items-center justify-center text-xl shadow-lg"}>
-        {currentTopic.icon}
+      {/* Topic Icon - Updated to use matching icons */}
+      <div className={"w-10 h-10 rounded-xl bg-gradient-to-br " + currentTopic.color + " flex items-center justify-center shadow-lg"}>
+        <div className="text-white">
+          {getTopicIcon(currentTopic.id)}
+        </div>
       </div>
       
       {/* Title */}
@@ -34,7 +76,7 @@ const StudentHeader = ({ currentTopic, studentName, setView, handleClearChat }) 
       
       {/* Clear Chat Button */}
       <button 
-        onClick={handleClearChat}
+        onClick={confirmClearChat}
         className="group p-2 rounded-lg hover:bg-red-500/10 border border-transparent hover:border-red-500/50 transition-all"
         title="Clear Chat History"
       >
