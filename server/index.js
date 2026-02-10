@@ -12,12 +12,14 @@ app.use(express.json());
 
 // 1. CONNECT TO MONGODB
 // We will create the .env file in the next step
-mongoose.connect("mongodb+srv://admin_cess:LJa3B6QudQ0GBahy@cluster0.6zc0fbj.mongodb.net/waybot?appName=Cluster0")
+  mongoose.connect(process.env.MONGO_URI)
+  
   .then(() => console.log("✅ Connected to MongoDB"))
   .catch((err) => console.error("❌ DB Connection Error:", err));
 
 // 2. DEFINE DATA MODELS (Schemas)
 // This tells MongoDB what your data looks like
+const PORT = process.env.PORT || 5000;
 
 // Schema for Individual Questions/Logs
 const LogSchema = new mongoose.Schema({
@@ -47,7 +49,8 @@ const UserSchema = new mongoose.Schema({
   lastActive: { type: Date, default: Date.now },
   termsAccepted: { type: Boolean, default: false },
   dataConsent: { type: Boolean, default: false },
-  consentAnsweredAt: { type: Date, default: null }
+  consentAnsweredAt: { type: Date, default: null },
+  deleted: { type: Boolean, default: false } 
 });
 const User = mongoose.model("User", UserSchema);
 // 3. API ROUTES (The Endpoints)
@@ -80,7 +83,7 @@ app.post("/api/logs", async (req, res) => {
     // ✅ update user's lastActive whenever they ask a question
     await User.findOneAndUpdate(
       { username: student },
-      { $set: { lastActive: Date.now() }, $setOnInsert: { joinedAt: Date.now() } },
+      { $set: { lastActive: new Date() }, $setOnInsert: { joinedAt: new Date() } },
       { upsert: true, new: true }
     );
 
@@ -131,10 +134,16 @@ app.post("/api/chat", async (req, res) => {
 
 // DELETE All Data (Reset Button)
 app.delete("/api/reset", async (req, res) => {
-  await Log.deleteMany({});
-  await Chat.deleteMany({});
-  res.json({ success: true });
+  try {
+    await Log.deleteMany({});
+    await Chat.deleteMany({});
+    await User.deleteMany({});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
 
 // DELETE: Clear specific chat history
 app.delete("/api/chat/:key", async (req, res) => {
@@ -206,10 +215,34 @@ app.put("/api/users/:username/consent", async (req, res) => {
 
 
 
-// GET: Get all students
+// GET: Get students (optionally include deleted)
 app.get("/api/users", async (req, res) => {
-  const users = await User.find().sort({ lastActive: -1 });
+  const includeDeleted = req.query.includeDeleted === "true";
+
+  const query = includeDeleted ? {} : { deleted: { $ne: true } };
+
+  const users = await User.find(query).sort({ lastActive: -1 });
   res.json(users);
+});
+
+
+// DELETE: Soft delete a student (keeps logs)
+app.delete("/api/users/:username", async (req, res) => {
+  try {
+    const username = decodeURIComponent(req.params.username).trim();
+
+    const updated = await User.findOneAndUpdate(
+      { username },
+      { $set: { deleted: true } },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ error: "User not found" });
+
+    return res.json({ success: true, user: updated });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 
@@ -220,27 +253,38 @@ const SectionSchema = new mongoose.Schema({
 });
 const Section = mongoose.model("Section", SectionSchema);
 
-// GET all sections
 app.get("/api/sections", async (req, res) => {
-  const sections = await Section.find().sort({ createdAt: 1 });
-  res.json(sections);
+  try {
+    const sections = await Section.find().sort({ createdAt: 1 });
+    res.json(sections);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// POST create section
 app.post("/api/sections", async (req, res) => {
-  const { name } = req.body;
-  const section = await Section.create({ name });
-  res.json(section);
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Section name required" });
+
+    const section = await Section.create({ name });
+    res.json(section);
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ error: "Section already exists" });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// DELETE section
 app.delete("/api/sections/:id", async (req, res) => {
-  await Section.findByIdAndDelete(req.params.id);
-  res.json({ success: true });
+  try {
+    await Section.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
-
 
 // 4. START SERVER
-const PORT = 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-

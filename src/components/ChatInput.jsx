@@ -17,11 +17,24 @@ const ChatInput = ({
 }) => {
 
   const [hasInput, setHasInput] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
+
   const handleSend = () => {
+    // hard guards to prevent API spam
+    if (isLoading) return;
+    if (!hasInput) return;
+    if (cooldown) return;
+
+    setCooldown(true);
     sendMessage();
+
     if (editorRef.current) editorRef.current.innerHTML = "";
-    setHasInput(false); 
+    setHasInput(false);
+
+    setTimeout(() => setCooldown(false), 1000); // 1s cooldown
   };
+
+
   return (
     // INPUT AREA: flex-shrink-0 ensures it stays FIXED at the bottom
     <div
@@ -68,6 +81,7 @@ const ChatInput = ({
                 // 1. SEND MESSAGE (Enter key) - Needs to call sendMessage prop
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  if (isLoading || !hasInput || cooldown) return;
                   handleSend();
                   return;
                 }
@@ -140,7 +154,7 @@ const ChatInput = ({
             onMouseDown={(e) => e.preventDefault()}   
             // Needs to call sendMessage prop
             onClick={handleSend}
-            disabled={isLoading || !hasInput}
+            disabled={isLoading || !hasInput || cooldown}
 
             className="
               px-6 py-3 rounded-xl 

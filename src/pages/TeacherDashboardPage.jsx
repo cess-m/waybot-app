@@ -30,9 +30,45 @@ const TeacherDashboardPage = ({
   // "all" | "sections" | "section-detail"
   const [activeSection, setActiveSection] = useState(null);
   const [mySections, setMySections] = useState([]);
+  const [hiddenStudents, setHiddenStudents] = useState([]);
 
   const [newSectionName, setNewSectionName] = useState('');
   const [showAddSection, setShowAddSection] = useState(false);
+
+  // Delete student function
+  const handleDeleteStudent = (studentName) => {
+    toast("Delete this student?", {
+      description: `This will remove ${studentName} from your student list. Their question history will be preserved.`,
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            const res = await fetch(`http://localhost:5000/api/users/${encodeURIComponent(studentName)}`, {
+              method: "DELETE",
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || "Failed to delete student");
+
+            // Close student detail panel if this student was selected
+            if (selectedStudentDetail === studentName) {
+              setSelectedStudentDetail(null);
+            }
+            
+            setHiddenStudents((prev) => [...new Set([...prev, studentName])]);
+            toast.success("Student deleted successfully");
+           
+          } catch (err) {
+            console.error("Delete student failed:", err);
+            toast.error("Failed to delete student");
+          }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+      },
+    });
+  };
 
   const fetchSections = async () => {
     try {
@@ -47,7 +83,25 @@ const TeacherDashboardPage = ({
 
   useEffect(() => {
     fetchSections();
+
+    const loadDeletedUsers = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/users?includeDeleted=true");
+        const users = await res.json();
+
+        const deleted = (users || [])
+          .filter((u) => u.deleted === true)
+          .map((u) => u.username);
+
+        setHiddenStudents(deleted);
+      } catch (err) {
+        console.error("Failed to load deleted users", err);
+      }
+    };
+
+    loadDeletedUsers();
   }, []);
+
 
   // Add new section
   const handleAddSection = async () => {
@@ -117,48 +171,196 @@ const handleDeleteSection = (sectionId) => {
     return ['all', ...Array.from(sectionSet)];
   }, [analytics?.byStudent]);
 
-  // Filter analytics by selected section
-  const filteredAnalytics = useMemo(() => {
-    if (!analytics) {
-      return {
-        byStudent: [],
-        byTopic: [],
-        totalQuestions: 0,
-        confusionRate: 0,
-        activeStudents: 0,
-        topicsCovered: 0,
-      };
+    // ✅ 1) Logs WITHOUT deleted students (single source of truth)
+  const visibleLogs = useMemo(() => {
+    return (logs || []).filter((l) => !hiddenStudents.includes(l.student));
+  }, [logs, hiddenStudents]);
+
+  // ✅ 2) Analytics rebuilt from visibleLogs so ALL cards/sections match
+  const visibleAnalytics = useMemo(() => {
+    const byStudentMap = new Map();
+    const byTopicMap = new Map();
+
+    for (const log of visibleLogs) {
+      const student = log.student || "Unknown";
+      const section = log.section || "No Section";
+      const topicId = log.topicId || "Unknown";
+      const topicName = log.topicName || topicId;
+
+      // byStudent
+      if (!byStudentMap.has(student)) {
+        byStudentMap.set(student, {
+          student,
+          section,
+          total: 0,
+          confused: 0,
+          lastActive: null,
+        });
+      }
+      const s = byStudentMap.get(student);
+      s.total += 1;
+      if (log.confused === true) s.confused += 1;
+
+      const ts = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+      if (!s.lastActive || ts > new Date(s.lastActive).getTime()) {
+        s.lastActive = log.timestamp || s.lastActive;
+      }
+
+      // byTopic
+      if (!byTopicMap.has(topicId)) {
+        byTopicMap.set(topicId, {
+          topicId,
+          topicName,
+          total: 0,
+          confused: 0,
+        });
+      }
+      const t = byTopicMap.get(topicId);
+      t.total += 1;
+      if (log.confused === true) t.confused += 1;
     }
 
-    if (selectedSection === 'all') return analytics;
-
-    const filteredByStudent = (analytics.byStudent || []).filter(
-      (s) => (s.section || 'No Section') === selectedSection
+    const byStudent = Array.from(byStudentMap.values()).sort((a, b) =>
+      (a.student || "").localeCompare(b.student || "")
     );
 
+    const byTopic = Array.from(byTopicMap.values()).sort((a, b) =>
+      (a.topicName || "").localeCompare(b.topicName || "")
+    );
+
+    const totalQuestions = visibleLogs.length;
+    const totalConfused = byStudent.reduce((sum, s) => sum + (s.confused || 0), 0);
+    const confusionRate =
+      totalQuestions > 0 ? Math.round((totalConfused / totalQuestions) * 100) : 0;
+
+    const topicsCovered = new Set(visibleLogs.map((l) => l.topicId).filter(Boolean)).size;
+
+    return {
+      byStudent,
+      byTopic,
+      totalQuestions,
+      confusionRate,
+      activeStudents: byStudent.length,
+      topicsCovered,
+    };
+  }, [visibleLogs]);
+
+
+  // Filter analytics by selected section
+    const filteredAnalytics = useMemo(() => {
+    const base = visibleAnalytics || {
+      byStudent: [],
+      byTopic: [],
+      totalQuestions: 0,
+      confusionRate: 0,
+      activeStudents: 0,
+      topicsCovered: 0,
+    };
+
+    if (selectedSection === "all") return base;
+
+    const filteredByStudent = (base.byStudent || []).filter(
+      (s) => (s.section || "No Section") === selectedSection
+    );
+
+    // recompute totals from filtered students
     const totalQuestions = filteredByStudent.reduce((sum, s) => sum + (s.total || 0), 0);
     const totalConfused = filteredByStudent.reduce((sum, s) => sum + (s.confused || 0), 0);
     const confusionRate = totalQuestions > 0 ? Math.round((totalConfused / totalQuestions) * 100) : 0;
 
     return {
-      ...analytics,
+      ...base,
       byStudent: filteredByStudent,
       activeStudents: filteredByStudent.length,
       totalQuestions,
       confusionRate,
     };
-  }, [analytics, selectedSection]);
+  }, [visibleAnalytics, selectedSection]);
+
 
   // Build a lookup: studentName -> section (from logs)
-  const studentSectionMap = useMemo(() => {
-    const map = {};
-    (logs || []).forEach((log) => {
-      if (log?.student && log?.section) {
-        map[log.student] = log.section;
-      }
+    const studentSectionMap = useMemo(() => {
+      const map = {};
+      (visibleLogs || []).forEach((log) => {
+        if (log?.student && log?.section) {
+          map[log.student] = log.section;
+        }
+      });
+      return map;
+    }, [visibleLogs]);
+
+  // ✅ RECENT QUESTIONS for ACTIVE SECTION ONLY
+  const sectionFilteredRecent = useMemo(() => {
+    if (!activeSection) return [];
+
+    let arr = (logs || []).filter(
+      (log) =>
+        (log.section || "No Section") === activeSection &&
+        !hiddenStudents.includes(log.student)
+    );
+
+    if (recentFilter === "got-it") arr = arr.filter((l) => l.confused === false);
+    if (recentFilter === "confused") arr = arr.filter((l) => l.confused === true);
+    if (recentFilter === "pending")
+      arr = arr.filter((l) => l.confused !== true && l.confused !== false);
+
+    arr.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+
+    return arr;
+  }, [logs, activeSection, recentFilter, hiddenStudents]);
+
+  // ✅ GROUPING for ACTIVE SECTION ONLY
+  const sectionGroupedQuestions = useMemo(() => {
+    if (!activeSection) return [];
+
+    if (groupingMode === "latest") return sectionFilteredRecent;
+
+    const grouped = {};
+    sectionFilteredRecent.forEach((log) => {
+      let key = "Unknown";
+
+      if (groupingMode === "student") key = log.student || "Unknown Student";
+      if (groupingMode === "concept") key = log.concept || "No Concept";
+
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(log);
     });
-    return map;
-  }, [logs]);
+
+    return grouped;
+  }, [sectionFilteredRecent, groupingMode, activeSection]);
+
+
+// ✅ RECENT QUESTIONS — ALL SECTIONS (USE visibleLogs, NOT props)
+const allFilteredRecent = useMemo(() => {
+  let arr = [...(visibleLogs || [])];
+
+  if (recentFilter === "got-it") arr = arr.filter(l => l.confused === false);
+  if (recentFilter === "confused") arr = arr.filter(l => l.confused === true);
+  if (recentFilter === "pending")
+    arr = arr.filter(l => l.confused !== true && l.confused !== false);
+
+  arr.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  return arr;
+}, [visibleLogs, recentFilter]);
+
+const allGroupedQuestions = useMemo(() => {
+  if (groupingMode === "latest") return allFilteredRecent;
+
+  const grouped = {};
+  allFilteredRecent.forEach(log => {
+    let key = "Unknown";
+
+    if (groupingMode === "student") key = log.student || "Unknown Student";
+    if (groupingMode === "section") key = log.section || "No Section";
+    if (groupingMode === "concept") key = log.concept || "No Concept";
+
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(log);
+  });
+
+  return grouped;
+}, [allFilteredRecent, groupingMode]);
+
 
   const toggleTopicExpand = (topicId) => {
     setExpandedTopics((prev) => ({
@@ -188,7 +390,7 @@ const handleDeleteSection = (sectionId) => {
         sectionName={activeSection}
         setDashboardMode={setDashboardMode}
         setActiveSection={setActiveSection}
-        analytics={analytics}
+        analytics={visibleAnalytics}
         conceptStats={conceptStats}
         selectedStudentDetail={selectedStudentDetail}
         setSelectedStudentDetail={setSelectedStudentDetail}
@@ -197,9 +399,11 @@ const handleDeleteSection = (sectionId) => {
         setRecentFilter={setRecentFilter}
         groupingMode={groupingMode}
         setGroupingMode={setGroupingMode}
-        filteredRecent={filteredRecent}
-        groupedQuestions={groupedQuestions}
-        logs={logs}
+        filteredRecent={sectionFilteredRecent}
+        groupedQuestions={sectionGroupedQuestions}
+        logs={visibleLogs}
+        handleDeleteStudent={handleDeleteStudent}
+        hiddenStudents={hiddenStudents}
       />
     );
   }
@@ -214,7 +418,7 @@ const handleDeleteSection = (sectionId) => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div>
               <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Teacher Dashboard</h1>
-              <p className="text-slate-400">WayBot Analytics &amp; Student Performance</p>
+              <p className="text-slate-400 mb-6">WayBot Analytics &amp; Student Performance</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -403,9 +607,10 @@ const handleDeleteSection = (sectionId) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {mySections.map((section) => {
                   // Get stats for this section
-                  const sectionStudents = (analytics?.byStudent || []).filter(
+                  const sectionStudents = (visibleAnalytics?.byStudent || []).filter(
                     s => (s.section || 'No Section') === section.name
                   );
+
                   const totalQuestions = sectionStudents.reduce((sum, s) => sum + (s.total || 0), 0);
                   const totalConfused = sectionStudents.reduce((sum, s) => sum + (s.confused || 0), 0);
                   const confusionRate = totalQuestions > 0 ? Math.round((totalConfused / totalQuestions) * 100) : 0;
@@ -425,7 +630,7 @@ const handleDeleteSection = (sectionId) => {
                       {/* Content */}
                       <div className="relative">
                         <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-6 mt-4">
                             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/30 flex items-center justify-center">
                               <span className="text-2xl">📚</span>
                             </div>
@@ -864,11 +1069,15 @@ const handleDeleteSection = (sectionId) => {
                             <th className="text-center py-2 sm:py-3 px-1 sm:px-2 font-semibold">Section</th>
                             <th className="text-center py-2 sm:py-3 px-1 sm:px-2 font-semibold">Questions</th>
                             <th className="text-center py-2 sm:py-3 px-1 sm:px-2 font-semibold">Status</th>
-                            <th className="text-right py-2 sm:py-3 pl-2 sm:pl-3 font-semibold">Last Active</th>
+                            <th className="text-right py-2 sm:py-3 px-1 sm:px-2 font-semibold">Last Active</th>
+                            <th className="text-center py-2 sm:py-3 pl-2 sm:pl-3 font-semibold w-12"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/60">
-                          {filteredAnalytics.byStudent.map((s) => {
+                          {filteredAnalytics.byStudent
+                            .filter((s) => !hiddenStudents.includes(s.student))
+                            .map((s) => {
+
                             const isSelected = selectedStudentDetail === s.student;
                             const confRate =
                               s.total > 0 ? Math.round((s.confused / s.total) * 100) : 0;
@@ -877,12 +1086,14 @@ const handleDeleteSection = (sectionId) => {
                             return (
                               <tr
                                 key={s.student}
-                                onClick={() => setSelectedStudentDetail(s.student)}
-                                className={`cursor-pointer hover:bg-slate-900/70 transition-all group ${
+                                className={`hover:bg-slate-900/70 transition-all group ${
                                   isSelected ? 'bg-slate-900/90 shadow-inner' : ''
                                 }`}
                               >
-                                <td className="py-2 sm:py-3 pr-2 sm:pr-3">
+                                <td 
+                                  className="py-2 sm:py-3 pr-2 sm:pr-3 cursor-pointer"
+                                  onClick={() => setSelectedStudentDetail(s.student)}
+                                >
                                   <div className="flex items-center gap-1.5 sm:gap-2">
                                     <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-bold text-[10px] sm:text-xs flex-shrink-0">
                                       {s.student?.charAt(0)?.toUpperCase() || '?'}
@@ -891,17 +1102,26 @@ const handleDeleteSection = (sectionId) => {
                                   </div>
                                 </td>
 
-                                <td className="py-2 sm:py-3 px-1 sm:px-2 text-center text-slate-300 font-medium text-[10px] sm:text-xs">
+                                <td 
+                                  className="py-2 sm:py-3 px-1 sm:px-2 text-center text-slate-300 font-medium text-[10px] sm:text-xs cursor-pointer"
+                                  onClick={() => setSelectedStudentDetail(s.student)}
+                                >
                                   <span className="truncate block max-w-[80px] sm:max-w-none mx-auto">
                                     {s.section || studentSectionMap[s.student] || 'No Section'}
                                   </span>
                                 </td>
-                                <td className="py-2 sm:py-3 px-1 sm:px-2 text-center">
+                                <td 
+                                  className="py-2 sm:py-3 px-1 sm:px-2 text-center cursor-pointer"
+                                  onClick={() => setSelectedStudentDetail(s.student)}
+                                >
                                   <span className="px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-slate-700/50 text-slate-300 font-semibold text-[10px] sm:text-xs inline-block">
                                     {s.total}
                                   </span>
                                 </td>
-                                <td className="py-2 sm:py-3 px-1 sm:px-2 text-center">
+                                <td 
+                                  className="py-2 sm:py-3 px-1 sm:px-2 text-center cursor-pointer"
+                                  onClick={() => setSelectedStudentDetail(s.student)}
+                                >
                                   <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                                     <span className="text-slate-300 text-[10px] sm:text-xs font-medium">
                                       {confRate}% confused
@@ -915,7 +1135,10 @@ const handleDeleteSection = (sectionId) => {
                                     </span>
                                   </div>
                                 </td>
-                                <td className="py-2 sm:py-3 pl-2 sm:pl-3 text-right text-slate-500 text-[10px] sm:text-xs">
+                                <td 
+                                  className="py-2 sm:py-3 px-1 sm:px-2 text-right text-slate-500 text-[10px] sm:text-xs cursor-pointer"
+                                  onClick={() => setSelectedStudentDetail(s.student)}
+                                >
                                   {s.lastActive ? (
                                     <>
                                       {new Date(s.lastActive).toLocaleDateString('en-US', {
@@ -933,6 +1156,31 @@ const handleDeleteSection = (sectionId) => {
                                   ) : (
                                     <span className="text-slate-600">No activity</span>
                                   )}
+                                </td>
+                                <td className="py-2 sm:py-3 pl-2 sm:pl-3 text-center">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteStudent(s.student);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 border border-transparent hover:border-red-500/30 text-slate-500 hover:text-red-400 transition-all"
+                                    title="Delete student"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      strokeWidth={2}
+                                      stroke="currentColor"
+                                      className="w-4 h-4"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                      />
+                                    </svg>
+                                  </button>
                                 </td>
                               </tr>
                             );
@@ -1075,9 +1323,12 @@ const handleDeleteSection = (sectionId) => {
               </div>
             </div>
 
+        
+        
+
             {/* Recent Questions Panel */}
           <div className="bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-xl mb-4">
-            {/* Header + Controls (MATCH SectionDashboard “Recent Questions”) */}
+            {/* Header + Controls (MATCH SectionDashboard "Recent Questions") */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
               {/* Left title */}
               <div className="flex items-center gap-2 sm:gap-3">
@@ -1156,7 +1407,7 @@ const handleDeleteSection = (sectionId) => {
             </div>
 
   {/* Content Rendering */}
-  {!filteredRecent || filteredRecent.length === 0 ? (
+  {!allFilteredRecent || allFilteredRecent.length === 0 ? (
     <div className="text-center py-12 sm:py-16">
       <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 sm:mb-4 rounded-full bg-slate-700/30 flex items-center justify-center">
         <svg
@@ -1179,18 +1430,18 @@ const handleDeleteSection = (sectionId) => {
     </div>
   ) : (
     <div className="space-y-4 sm:space-y-6">
-      {groupingMode === 'latest' && Array.isArray(groupedQuestions) && (
+      {groupingMode === 'latest' && Array.isArray(allGroupedQuestions) && (
         <div className="space-y-2 sm:space-y-3">
-          {groupedQuestions.map((r) => (
+          {allGroupedQuestions.map((r) => (
             <QuestionCard key={r.id} r={r} />
           ))}
         </div>
       )}
 
       {groupingMode !== 'latest' &&
-        groupedQuestions &&
-        !Array.isArray(groupedQuestions) &&
-        Object.entries(groupedQuestions).map(([groupName, questions]) => (
+        allGroupedQuestions &&
+          !Array.isArray(allGroupedQuestions) &&
+          Object.entries(allGroupedQuestions).map(([groupName, questions]) => (
           <div
             key={groupName}
             className="border border-slate-700/50 rounded-lg sm:rounded-xl overflow-hidden shadow-lg"
