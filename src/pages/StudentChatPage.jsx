@@ -19,8 +19,13 @@ const StudentChatPage = ({
   feedbackLog,
   feedbackGiven,
   recordUnderstanding,
-  messagesEndRef // The ref for scrolling
+  messagesEndRef, // The ref for scrolling
+
+  onEditMessage,
+  editingMsgId,
+  cancelEdit,
 }) => {
+
   
   // NOTE: The scrolling logic must remain here as the ref is defined in Waybot
   useEffect(() => {
@@ -109,9 +114,52 @@ const StudentChatPage = ({
       >
        
         <div className="max-w-2xl mx-auto space-y-4">
-          {messages.map((m) => (
-            <ChatBubble key={m.id} m={m} />
-          ))}
+          {messages.map((m) => {
+            const isStudent = m.sender === "student";
+            const isEditingThis = editingMsgId === m.id;
+
+            return (
+              <div key={m.id} className="relative group">
+                <ChatBubble m={m} />
+
+                {isStudent && m.id !== "welcome" && (
+                  <button
+                    type="button"
+                    onClick={() => onEditMessage?.(m)}
+                    disabled={isLoading}
+                    className={
+                      "absolute -right-10 top-1/2 -translate-y-1/2 " +
+                      "p-2 rounded-lg bg-slate-800/80 border border-slate-700 " +
+                      "opacity-0 group-hover:opacity-100 transition " +
+                      "hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    }
+                    title="Edit message"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="w-4 h-4 text-slate-200"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.7 17.59 4 19l1.41-4.7L16.862 3.487Z"
+                      />
+                    </svg>
+                  </button>
+                )}
+
+                {isEditingThis && (
+                  <div className="mt-2 text-xs text-violet-300">
+                    Editing this message
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {isLoading && (
             <div className="flex justify-start">
@@ -128,6 +176,23 @@ const StudentChatPage = ({
         </div>
         
       </div>
+      
+      {editingMsgId && (
+        <div className="px-4 pb-2">
+          <div className="max-w-2xl mx-auto flex items-center justify-between rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2">
+            <div className="text-sm text-violet-200">
+              You are editing a previous message
+            </div>
+            <button
+              type="button"
+              onClick={() => cancelEdit?.()}
+              className="text-sm text-violet-200 hover:text-white"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* INPUT AREA*/}
       <ChatInput 
@@ -140,6 +205,8 @@ const StudentChatPage = ({
         feedbackLog={feedbackLog}
         feedbackGiven={feedbackGiven}
         recordUnderstanding={recordUnderstanding}
+        editingMsgId={editingMsgId}
+        cancelEdit={cancelEdit}   
       />
     </div> 
   );

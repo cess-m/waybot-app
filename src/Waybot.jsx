@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import "mathlive";
 import { autoLatex } from "./utils/autoLatex";
 import AnimatedBackground from "./components/AnimatedBackground";
@@ -101,9 +102,12 @@ export default function Waybot() {
   const [teacherPass, setTeacherPass] = useState("");
   const [teacherAuthenticated, setTeacherAuthenticated] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [editingMsgId, setEditingMsgId] = useState(null);
+  const [editingOriginalHtml, setEditingOriginalHtml] = useState("");
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [users, setUsers] = useState([]);
   const [feedbackStatus, setFeedbackStatus] = useState(null); 
   const [chatHistories, setChatHistories] = useState({});
   const [recentFilter, setRecentFilter] = useState("all");  
@@ -317,6 +321,16 @@ function insertMathBox() {
       .catch(err => console.error("Backend offline:", err));
   }, []);
 
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/users")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setUsers(data);
+      })
+      .catch((err) => console.error("Users fetch failed:", err));
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
@@ -327,12 +341,25 @@ function insertMathBox() {
     if (!logs.length) return { totalQuestions: 0, confusionRate: 0, activeStudents: 0, topicsCovered: 0, byTopic: [], byStudent: [], recent: [] };
     const byTopicMap = new Map();
     const byStudentMap = new Map();
+    const userMap = new Map((users || []).map((u) => [u.username, u]));
+
     logs.forEach((log) => {
       if (!byTopicMap.has(log.topicId)) byTopicMap.set(log.topicId, { topicId: log.topicId, topicName: TOPICS.find((t) => t.id === log.topicId)?.name || log.topicId, total: 0, confused: 0 });
       const t = byTopicMap.get(log.topicId);
       t.total++;
       if (log.confused === true) t.confused++;
-      if (!byStudentMap.has(log.student)) byStudentMap.set(log.student, { student: log.student, total: 0, confused: 0, lastActive: log.timestamp });
+      if (!byStudentMap.has(log.student)) {
+        const u = userMap.get(log.student);
+
+        byStudentMap.set(log.student, {
+          student: log.student,
+          section: u?.section || log.section || "No Section",
+          total: 0,
+          confused: 0,
+          lastActive: log.timestamp
+        });
+      }
+
       const s = byStudentMap.get(log.student);
       s.total++;
       if (log.confused === true) s.confused++;
@@ -348,7 +375,7 @@ function insertMathBox() {
       byStudent: Array.from(byStudentMap.values()).sort((a, b) => b.lastActive - a.lastActive),
       recent: [...logs].sort((a, b) => b.timestamp - a.timestamp).slice(0, 15),
     };
-  }, [logs]);
+  }, [logs, users]);
 
     const conceptStats = useMemo(() => {
       const map = new Map();
@@ -403,9 +430,13 @@ function insertMathBox() {
     
     filteredRecent.forEach((log) => {
       // Decide what key to group by: Student Name OR Concept Name
-      const key = groupingMode === "student" 
-        ? log.student 
-        : (log.concept || "General"); 
+      const key =
+        groupingMode === "student"
+          ? log.student
+          : groupingMode === "section"
+          ? (log.section || "No Section")
+          : (log.concept || "General");
+
         
       if (!groups[key]) groups[key] = [];
       groups[key].push(log);
@@ -413,26 +444,6 @@ function insertMathBox() {
 
     return groups; 
   }, [filteredRecent, groupingMode]);
-  
-  const handleStudentLogin = async () => {
-  if (!studentName.trim() || !studentSection.trim()) return;
-
-  try {
-    await fetch("http://localhost:5000/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: studentName.trim(),
-        section: studentSection.trim(),
-        consent: true
-      })
-    });
-  } catch (e) {
-    console.error("Login sync failed", e);
-  }
-
-  setView("topic-select");
-};
 
 
   const handleTeacherLogin = () => {
@@ -441,7 +452,9 @@ function insertMathBox() {
       setView("teacher-dashboard");
       setTeacherPass(""); // Clear password for security
     } else {
-      alert("Incorrect password. Please try again.");
+      toast.error("Incorrect password", {
+        description: "Please try again.",
+      });
     }
   };
 
@@ -504,7 +517,6 @@ function insertMathBox() {
   };
   
   const handleClearChat = async () => {
-    if (!confirm("Are you sure you want to clear this conversation?")) return;
     
     const historyKey = studentName.toLowerCase() + "-" + selectedTopic;
 
@@ -613,6 +625,25 @@ const handleOpenContextMenu = () => {
   }
 };
 
+  const handleEditMessage = (msg) => {
+    // only allow editing student messages
+    if (!msg || msg.sender !== "student") return;
+
+    setEditingMsgId(msg.id);
+    setEditingOriginalHtml(msg.html || "");
+
+    // load old message back into editor
+    if (editorRef.current) {
+      editorRef.current.innerHTML = msg.html || msg.text || "";
+      editorRef.current.focus();
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingMsgId(null);
+    setEditingOriginalHtml("");
+    if (editorRef.current) editorRef.current.innerHTML = "";
+  };
 
   const sendMessage = async () => {
   if (!editorRef.current) return;
@@ -633,30 +664,55 @@ const handleOpenContextMenu = () => {
   // CLEAR THE EDITOR
   editorRef.current.innerHTML = "";
 
-  // 2) Add the student's message to the UI
-  const userMessage = {
+  // 2) Add or UPDATE the student's message in the UI
+    let userMessage = {
       id: Date.now() + "-user",
       sender: "student",
-      html: rawHtml,   // Shows the math boxes correctly
-      text: cleanText  // Shows "$x^2$" to the AI
+      html: rawHtml,
+      text: cleanText,
     };
-  const newMessages = [...messages, userMessage];
-  setMessages(newMessages);
 
-  const questionText = cleanText; // Send the readable text to AI
-  setInput("");
+    let newMessages = [];
 
-  // clear the MathLive field refs if any exist in memory
-  if (mathFieldRef.current) {
-    mathFieldRef.current.setValue("");
-  }
+    if (editingMsgId) {
+      // update existing message
+      newMessages = messages.map((m) =>
+        m.id === editingMsgId ? { ...m, html: rawHtml, text: cleanText } : m
+      );
 
-  setIsLoading(true);
+      // remove bot replies after that edited message (so we can regenerate)
+      const idx = newMessages.findIndex((m) => m.id === editingMsgId);
+      newMessages = idx >= 0 ? newMessages.slice(0, idx + 1) : newMessages;
+
+      // use the edited message as "userMessage"
+      userMessage = newMessages[newMessages.length - 1];
+
+      // exit edit mode
+      setEditingMsgId(null);
+      setEditingOriginalHtml("");
+    } else {
+      // normal new message
+      newMessages = [...messages, userMessage];
+    }
+
+    setMessages(newMessages);
+
+
+    const questionText = cleanText; // Send the readable text to AI
+    setInput("");
+
+    // clear the MathLive field refs if any exist in memory
+    if (mathFieldRef.current) {
+      mathFieldRef.current.setValue("");
+    }
+
+    setIsLoading(true);
 
   // 3) Log this question for analytics
   const logEntry = {
     id: Date.now().toString(),
     student: studentName.trim(),
+    section: studentSection.trim(),
     topicId: selectedTopic,
     concept: currentTopic?.name ? `${currentTopic.name} – basics` : "General",
     explanation: null,
@@ -747,7 +803,9 @@ const handleOpenContextMenu = () => {
   setIsLoading(false);
 };
 
-  const recordUnderstanding = (confused, logId) => {
+  
+
+const recordUnderstanding = async (confused, logId) => {
     // 1) Update logs for analytics (Local UI)
     setLogs((prev) =>
       prev.map((log) =>
@@ -758,51 +816,111 @@ const handleOpenContextMenu = () => {
     // 2) Update local feedback status
     setFeedbackStatus(confused ? "confused" : "got-it");
 
-    // 3) SEND UPDATE TO BACKEND (The missing part!)
+    // 3) SEND UPDATE TO BACKEND
     fetch(`http://localhost:5000/api/logs/${logId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confused })
     }).catch(err => console.error("Feedback save failed", err));
 
-    // 4) Add feedback message in chat
-    setMessages((prev) => {
-      const feedbackLabel = confused ? "Still confused" : "Got it";
-      const studentMsg = {
-        id: Date.now() + "-feedback-student",
-        sender: "student",
-        text: feedbackLabel,
-      };
+    // 4) Add student's feedback message
+    const feedbackLabel = confused ? "Still confused" : "Got it";
+    const studentMsg = {
+      id: Date.now() + "-feedback-student",
+      sender: "student",
+      text: feedbackLabel,
+    };
 
+    const updatedWithStudent = [...messages, studentMsg];
+    setMessages(updatedWithStudent);
+    setIsLoading(true);
+
+    try {
+      // 5) Get AI's contextual response
+      const apiMessages = updatedWithStudent
+        .filter((m) => m.id !== "welcome")
+        .map((m) => ({
+          role: m.sender === "student" ? "user" : "assistant",
+          content: m.text,
+        }));
+
+      const cleanMessages = [];
+      for (const msg of apiMessages) {
+        if (cleanMessages.length === 0 && msg.role === "assistant") continue;
+        if (
+          cleanMessages.length > 0 &&
+          cleanMessages[cleanMessages.length - 1].role === msg.role
+        ) {
+          cleanMessages[cleanMessages.length - 1].content += "\n" + msg.content;
+          continue;
+        }
+        cleanMessages.push(msg);
+      }
+
+      const aiText = await callLLM({
+        cleanMessages,
+        questionText: feedbackLabel,
+        studentName,
+        currentTopic,
+        TUTOR_SYSTEM_PROMPT: TUTOR_SYSTEM_PROMPT,
+        VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
+      });
+
+      // 6) Add bot's response
       const botMsg = {
         id: Date.now() + "-feedback-bot",
         sender: "bot",
-        text: confused
-          ? "Thanks for letting me know. You can ask a follow-up question or we can try a simpler example."
-          : "Great! I’m glad that made sense.",
+        text: aiText,
       };
 
-      const updated = [...prev, studentMsg, botMsg];
-      saveChatHistory(updated);
-      return updated;
-    });
+      const finalMessages = [...updatedWithStudent, botMsg];
+      setMessages(finalMessages);
+      saveChatHistory(finalMessages);
+    } catch (e) {
+      console.error("Feedback response error:", e);
+      const errorMsg = {
+        id: Date.now() + "-feedback-error",
+        sender: "bot",
+        text: "Sorry, I couldn't process that. Please try again.",
+      };
+      setMessages([...updatedWithStudent, errorMsg]);
+    }
+
+    setIsLoading(false);
   };
 
-  const clearAllData = async () => {
-    if (!confirm("Reset all data? This will delete all data from the database.")) return;
-    
-    // 1. Tell Server to delete everything
-    try {
-      await fetch("http://localhost:5000/api/reset", { method: "DELETE" });
-      
-      // 2. Clear Local State
-      setLogs([]);
-      setChatHistories({});
-      alert("All data has been reset successfully!");
-    } catch (e) {
-      console.error("Reset failed", e);
-      alert("Failed to reset database.");
-    }
+  const clearAllData = () => {
+    toast("Reset all WayBot data?", {
+      description: "This will delete logs and chat histories. This cannot be undone.",
+      action: {
+        label: "Reset",
+        onClick: async () => {
+          const tId = toast.loading("Resetting data...");
+
+          try {
+            const res = await fetch("http://localhost:5000/api/reset", { method: "DELETE" });
+            if (!res.ok) throw new Error("Reset failed");
+
+            setLogs([]);
+            setChatHistories({});
+
+            toast.success("Reset complete", {
+              id: tId,
+              description: "All logs and chat histories were cleared.",
+            });
+          } catch (e) {
+            console.error("Reset failed", e);
+            toast.error("Reset failed", {
+              id: tId,
+              description: "Please check if the backend is running.",
+            });
+          }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+      },
+    });
   };
 
   const hasHistory = (topicId) => {
@@ -817,18 +935,18 @@ const handleOpenContextMenu = () => {
 
  // STUDENT LOGIN REPLACEMENT
   if (view === "student-login") {
-    return (
-      <StudentLoginPage
-        setView={setView}
-        studentName={studentName}
-        setStudentName={setStudentName}
-        studentSection={studentSection}
-        setStudentSection={setStudentSection}
-        isLoading={isLoading}
-        setIsLoading={setIsLoading}
-      />
-    );
-  }
+  return (
+    <StudentLoginPage
+      setView={setView}
+      studentName={studentName}
+      setStudentName={setStudentName}
+      studentSection={studentSection}
+      setStudentSection={setStudentSection}
+      isLoading={isLoading}
+      setIsLoading={setIsLoading}
+    />
+  );
+}
 
   // TOPIC SELECT REPLACEMENT
   if (view === "topic-select") {
@@ -868,6 +986,9 @@ const handleOpenContextMenu = () => {
         feedbackLog={feedbackLog}
         feedbackGiven={feedbackGiven}
         recordUnderstanding={recordUnderstanding}
+        onEditMessage={handleEditMessage}
+        cancelEdit={cancelEdit}
+        editingMsgId={editingMsgId}
         messagesEndRef={messagesEndRef}
       />
     );

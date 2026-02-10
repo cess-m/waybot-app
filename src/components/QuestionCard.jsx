@@ -15,6 +15,12 @@ const QuestionCard = ({ r }) => {
         {/* Top row: student, topic, status badge */}
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="font-medium text-violet-200 text-sm">{r.student}</span>
+
+          <span className="text-slate-600 text-xs">•</span>
+          <span className="text-slate-400 text-xs">
+            {r.section || "No Section"}
+          </span>
+
           <span className="text-slate-600 text-xs">•</span>
           <span className="text-slate-400 text-xs">{topic?.name}</span>
 

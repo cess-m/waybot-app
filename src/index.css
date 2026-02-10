@@ -145,3 +145,212 @@ math-field .ML__menu-toggle {
   background: rgba(139, 92, 246, 0.12) !important; /* subtle violet glow */
   border-radius: 6px !important;
 }
+
+/* =============================== */
+/* SONNER TOAST – HIGH CONTRAST UI */
+/* =============================== */
+
+/* Make sure toasts sit above modals and overlays */
+[data-sonner-toaster] {
+  z-index: 999999 !important;
+}
+
+/* Base toast */
+[data-sonner-toast] {
+  /* Contrast-y glass */
+  background: linear-gradient(
+    135deg,
+    rgba(23, 36, 66, 0.96),
+    rgba(8, 17, 55, 0.94)
+  ) !important;
+
+  backdrop-filter: blur(14px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
+
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  border-radius: 18px !important;
+
+  padding: 16px 18px !important;
+  gap: 10px !important;
+
+  /* Stronger elevation */
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(124, 58, 237, 0.18),
+    0 0 28px rgba(124, 58, 237, 0.18) !important;
+
+  color: #fff !important;
+  font-size: 14px !important;
+  font-weight: 520 !important;
+
+  /* Make it feel more “system-like” */
+  letter-spacing: 0.2px !important;
+
+  /* Accent bar container */
+  position: relative !important;
+  overflow: hidden !important;
+
+  /* Slight separation from background */
+  transform: translateZ(0) !important;
+}
+
+/* Left accent bar */
+[data-sonner-toast]::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 4px !important;
+  background: linear-gradient(180deg, rgba(124, 58, 237, 1), rgba(99, 102, 241, 1)) !important;
+  box-shadow: 0 0 18px rgba(124, 58, 237, 0.55) !important;
+}
+
+/* Title */
+[data-sonner-toast] [data-title] {
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  line-height: 1.2 !important;
+}
+
+/* Description */
+[data-sonner-toast] [data-description] {
+  color: rgba(226, 232, 240, 0.78) !important;
+  font-size: 13px !important;
+  margin-top: 4px !important;
+  line-height: 1.35 !important;
+}
+
+/* Icon */
+[data-sonner-toast] [data-icon] {
+  filter: drop-shadow(0 0 10px rgba(124, 58, 237, 0.25)) !important;
+}
+
+/* --------------------------- */
+/* Type styles (more obvious)  */
+/* --------------------------- */
+
+/* Success */
+[data-sonner-toast][data-type="success"] {
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(34, 197, 94, 0.22),
+    0 0 26px rgba(34, 197, 94, 0.16) !important;
+}
+[data-sonner-toast][data-type="success"]::before {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 1), rgba(16, 185, 129, 1)) !important;
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.45) !important;
+}
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: rgb(34 197 94) !important;
+}
+
+/* Error */
+[data-sonner-toast][data-type="error"] {
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(239, 68, 68, 0.24),
+    0 0 26px rgba(239, 68, 68, 0.16) !important;
+}
+[data-sonner-toast][data-type="error"]::before {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 1), rgba(244, 63, 94, 1)) !important;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.45) !important;
+}
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: rgb(239 68 68) !important;
+}
+
+/* Info */
+[data-sonner-toast][data-type="info"] {
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(59, 130, 246, 0.24),
+    0 0 26px rgba(59, 130, 246, 0.16) !important;
+}
+[data-sonner-toast][data-type="info"]::before {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 1), rgba(56, 189, 248, 1)) !important;
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.45) !important;
+}
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: rgb(59 130 246) !important;
+}
+
+/* Warning */
+[data-sonner-toast][data-type="warning"] {
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(251, 146, 60, 0.26),
+    0 0 26px rgba(251, 146, 60, 0.16) !important;
+}
+[data-sonner-toast][data-type="warning"]::before {
+  background: linear-gradient(180deg, rgba(251, 146, 60, 1), rgba(250, 204, 21, 1)) !important;
+  box-shadow: 0 0 18px rgba(251, 146, 60, 0.45) !important;
+}
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: rgb(251 146 60) !important;
+}
+
+/* Loading */
+[data-sonner-toast][data-type="loading"]::before {
+  background: linear-gradient(180deg, rgba(124, 58, 237, 1), rgba(99, 102, 241, 1)) !important;
+}
+
+/* --------------------------- */
+/* Buttons (more readable)     */
+/* --------------------------- */
+
+[data-sonner-toast] [data-close-button] {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  color: rgba(226, 232, 240, 0.8) !important;
+  border-radius: 10px !important;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease !important;
+}
+[data-sonner-toast] [data-close-button]:hover {
+  background: rgba(51, 65, 85, 0.7) !important;
+  color: #fff !important;
+  transform: scale(1.03) !important;
+}
+
+[data-sonner-toast] [data-button] {
+  background: linear-gradient(90deg, rgb(124 58 237), rgb(99 102 241)) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 8px 14px !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+[data-sonner-toast] [data-button]:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 0 22px rgba(124, 58, 237, 0.35), 0 12px 24px rgba(0,0,0,0.45) !important;
+}
+
+[data-sonner-toast] [data-cancel] {
+  background: rgba(30, 41, 59, 0.55) !important;
+  color: rgba(226, 232, 240, 0.9) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  padding: 8px 14px !important;
+  border-radius: 10px !important;
+  font-weight: 650 !important;
+  font-size: 13px !important;
+  transition: transform 0.15s ease, background 0.15s ease !important;
+}
+[data-sonner-toast] [data-cancel]:hover {
+  background: rgba(51, 65, 85, 0.7) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* --------------------------- */
+/* Animation (cleaner)         */
+/* --------------------------- */
+@keyframes toastIn {
+  from { transform: translateY(-10px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+[data-sonner-toast] {
+  animation: toastIn 180ms ease-out !important;
+}

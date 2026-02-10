@@ -1,5 +1,5 @@
-import React from 'react';
-import FeedbackButtons from './FeedbackButtons'; // Import the new component
+import React, { useState } from 'react';
+import FeedbackButtons from './FeedbackButtons'; 
 
 const ChatInput = ({ 
   editorRef, 
@@ -10,8 +10,18 @@ const ChatInput = ({
   lastBotMsgWithLog,
   feedbackLog,
   feedbackGiven,
-  recordUnderstanding
+  recordUnderstanding,
+
+  editingMsgId,    
+  cancelEdit,       
 }) => {
+
+  const [hasInput, setHasInput] = useState(false);
+  const handleSend = () => {
+    sendMessage();
+    if (editorRef.current) editorRef.current.innerHTML = "";
+    setHasInput(false); 
+  };
   return (
     // INPUT AREA: flex-shrink-0 ensures it stays FIXED at the bottom
     <div
@@ -48,11 +58,25 @@ const ChatInput = ({
               suppressContentEditableWarning={true}
               className="w-full bg-slate-800 text-white p-3 rounded-xl outline-none min-h-[48px]"
               onClick={() => window.mathVirtualKeyboard?.hide()}
+              onInput={() => {
+                if (!editorRef.current) return;
+                const hasText = editorRef.current.innerText.trim() !== "";
+                const hasMath = editorRef.current.querySelectorAll("math-field").length > 0;
+                setHasInput(hasText || hasMath);
+              }}
               onKeyDown={(e) => {
                 // 1. SEND MESSAGE (Enter key) - Needs to call sendMessage prop
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  sendMessage();
+                  handleSend();
+                  return;
+                }
+
+                if (e.key === "Escape" && editingMsgId) {
+                  e.preventDefault();
+                  cancelEdit?.();
+                  if (editorRef.current) editorRef.current.innerHTML = "";
+                  setHasInput(false);
                   return;
                 }
 
@@ -115,15 +139,9 @@ const ChatInput = ({
             type="button" 
             onMouseDown={(e) => e.preventDefault()}   
             // Needs to call sendMessage prop
-            onClick={sendMessage}
-            disabled={
-              isLoading ||
-              !editorRef.current ||
-              (
-                editorRef.current.innerText.trim() === "" &&
-                editorRef.current.querySelectorAll("math-field").length === 0
-              )
-            }
+            onClick={handleSend}
+            disabled={isLoading || !hasInput}
+
             className="
               px-6 py-3 rounded-xl 
               bg-gradient-to-r from-violet-600 to-indigo-600
@@ -134,19 +152,20 @@ const ChatInput = ({
               disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none disabled:scale-100
             "
           >
-            Send
+            {editingMsgId ? "Save" : "Send"}
           </button>
         </div>
         
         {/* FEEDBACK BUTTONS COMPONENT */}
         {/* The FeedbackButtons component is used here */}
-        <FeedbackButtons
-          lastBotMsgWithLog={lastBotMsgWithLog}
-          feedbackLog={feedbackLog}
-          feedbackGiven={feedbackGiven}
-          recordUnderstanding={recordUnderstanding}
-        />
-        
+        {!editingMsgId && (
+            <FeedbackButtons
+              lastBotMsgWithLog={lastBotMsgWithLog}
+              feedbackLog={feedbackLog}
+              feedbackGiven={feedbackGiven}
+              recordUnderstanding={recordUnderstanding}
+            />
+          )}  
       </div>
     </div>
   );

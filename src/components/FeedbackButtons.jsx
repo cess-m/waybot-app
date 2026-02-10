@@ -6,6 +6,15 @@ const FeedbackButtons = ({ lastBotMsgWithLog, feedbackLog, feedbackGiven, record
         return null;
     }
 
+    // CRITICAL: Only show buttons if the AI's message ends with "Gets mo ba 'to?"
+    const botText = lastBotMsgWithLog.text || "";
+    const asksForUnderstanding = botText.trim().endsWith("Gets mo ba 'to?");
+
+    // If AI didn't ask for understanding, don't show buttons
+    if (!asksForUnderstanding) {
+        return null;
+    }
+
     // The message that explains the current feedback status
     const statusMessage = feedbackGiven
         ? feedbackLog?.confused

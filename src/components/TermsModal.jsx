@@ -354,7 +354,12 @@ const TermsModal = ({ isOpen, onAccept, onDecline, studentName }) => {
               Exit
             </button>
             <button
-              onClick={onAccept}
+              onClick={() =>
+                onAccept({
+                  termsAccepted: checked1,
+                  dataConsent: checked2,
+                })
+              }
               disabled={!canProceed}
               className="px-3 py-2 sm:px-6 sm:py-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white font-bold shadow-xl shadow-violet-500/30
                 hover:shadow-violet-500/50 hover:scale-[1.02] transition-all active:scale-95 w-full sm:flex-1
