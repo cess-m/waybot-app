@@ -1,4 +1,4 @@
-# Waybot — AI Math Tutoring Chatbot
+# Waybot - AI Math Tutoring Chatbot
 
 Waybot is an AI-powered web application designed to support students in learning Calculus through guided, step-by-step problem solving. Instead of providing direct answers only, the chatbot is structured to help learners understand the reasoning process behind mathematical solutions.
 
