@@ -2,6 +2,10 @@
 
 Waybot is an AI-powered web application designed to support students in learning Calculus through guided, step-by-step problem solving. Instead of providing direct answers only, the chatbot is structured to help learners understand the reasoning process behind mathematical solutions.
 
+## Live Demo
+
+Live Demo: https://waybot-ten.vercel.app
+
 ## Overview
 
 Waybot was developed as an educational chatbot for Calculus topics, including limits, differentiation, and integration. The system provides guided explanations, hints, and structured responses to help students work through problems more independently.
