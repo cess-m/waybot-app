@@ -6,6 +6,8 @@ import { TOPICS } from '../config/waybotConfig';
 import MathRenderer from "../components/MathRenderer";
 import SectionDashboardPage from './SectionDashboardPage';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const TeacherDashboardPage = ({
   setView,
   setTeacherAuthenticated,
@@ -43,7 +45,7 @@ const TeacherDashboardPage = ({
         label: "Delete",
         onClick: async () => {
           try {
-            const res = await fetch(`http://localhost:5000/api/users/${encodeURIComponent(studentName)}`, {
+            const res = await fetch(`${API_URL}/api/users/${encodeURIComponent(studentName)}`, {
               method: "DELETE",
             });
 
@@ -72,7 +74,7 @@ const TeacherDashboardPage = ({
 
   const fetchSections = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/sections");
+      const res = await fetch(`${API_URL}/api/sections`);
       const data = await res.json();
       setMySections(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -86,7 +88,7 @@ const TeacherDashboardPage = ({
 
     const loadDeletedUsers = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/users?includeDeleted=true");
+        const res = await fetch(`${API_URL}/api/users?includeDeleted=true`);
         const users = await res.json();
 
         const deleted = (users || [])
@@ -109,7 +111,7 @@ const TeacherDashboardPage = ({
     if (!name) return;
 
     try {
-      const res = await fetch("http://localhost:5000/api/sections", {
+      const res = await fetch(`${API_URL}/api/sections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -137,7 +139,7 @@ const handleDeleteSection = (sectionId) => {
       label: "Delete",
       onClick: async () => {
         try {
-          const res = await fetch(`http://localhost:5000/api/sections/${sectionId}`, {
+          const res = await fetch(`${API_URL}/api/sections/${sectionId}`, {
             method: "DELETE",
           });
 

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import TermsModal from "../components/TermsModal";
 import AnimatedBackground from "../components/AnimatedBackground";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const StudentLoginPage = ({
   setView,
   studentName,
@@ -16,7 +18,7 @@ const StudentLoginPage = ({
 
   const fetchSections = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/sections");
+      const res = await fetch(`${API_URL}/api/sections`);
       const data = await res.json();
       setSections(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -35,7 +37,7 @@ const StudentLoginPage = ({
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
+      const res = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -66,7 +68,7 @@ const StudentLoginPage = ({
       const uname = studentName.trim();
 
       await fetch(
-        `http://localhost:5000/api/users/${encodeURIComponent(uname)}/consent`,
+        `${API_URL}/api/users/${encodeURIComponent(uname)}/consent`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -77,7 +79,7 @@ const StudentLoginPage = ({
       setShowTerms(false);
 
       // 🔁 LOGIN AGAIN so backend sees termsAccepted = true
-      const res = await fetch("http://localhost:5000/api/login", {
+      const res = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -4,6 +4,8 @@ import QuestionCard from '../components/QuestionCard';
 import { TOPICS } from '../config/waybotConfig';
 import MathRenderer from "../components/MathRenderer";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const SectionDashboardPage = ({
   sectionName,
   setDashboardMode,
@@ -27,7 +29,7 @@ const SectionDashboardPage = ({
   useEffect(() => {
     const fetchSections = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/sections");
+        const res = await fetch(`${API_URL}/api/sections`);
         const data = await res.json();
         setSections(Array.isArray(data) ? data : []);
       } catch (err) {
@@ -48,7 +50,7 @@ const SectionDashboardPage = ({
   setSectionError("");
 
   try {
-    const res = await fetch("http://localhost:5000/api/sections", {
+    const res = await fetch(`${API_URL}/api/sections`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
