@@ -19,6 +19,8 @@ import TeacherDashboardPage from "./pages/TeacherDashboardPage";
 import { cleanupText } from "./utils/cleanupText";
 import { createRunLLMOnce } from "./utils/runLLMOnce";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 async function callLLM({ cleanMessages, questionText, studentName, currentTopic, TUTOR_SYSTEM_PROMPT, VITE_GEMINI_API_KEY }) {
   
   const geminiEndpoint =
@@ -341,7 +343,7 @@ function insertMathBox() {
 }
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/logs")
+    fetch(`${API_URL}/api/logs`)
       .then(res => res.json())
       .then(data => {
         if(Array.isArray(data)) setLogs(data);
@@ -351,7 +353,7 @@ function insertMathBox() {
 
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/users")
+    fetch(`${API_URL}/api/users`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setUsers(data);
@@ -492,7 +494,7 @@ function insertMathBox() {
   const topicName = TOPICS.find((t) => t.id === topicId)?.name;
 
   try {
-    const res = await fetch(`http://localhost:5000/api/chat/${historyKey}`);
+    const res = await fetch(`${API_URL}/api/chat/${historyKey}`);
     const savedMsgs = await res.json();
 
     if (Array.isArray(savedMsgs) && savedMsgs.length > 0) {
@@ -537,7 +539,7 @@ function insertMathBox() {
     setChatHistories((prev) => ({ ...prev, [historyKey]: msgs })); // Keep UI fast
 
     // Send to Server
-    await fetch("http://localhost:5000/api/chat", {
+    await fetch(`${API_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ historyKey, messages: msgs })
@@ -550,7 +552,7 @@ function insertMathBox() {
 
     try {
       // 1. Tell Server to delete it
-      await fetch(`http://localhost:5000/api/chat/${historyKey}`, { method: "DELETE" });
+      await fetch(`${API_URL}/api/chat/${historyKey}`, { method: "DELETE" });
 
       // 2. Reset the UI to the Welcome Message
       const topicName = TOPICS.find((t) => t.id === selectedTopic)?.name;
@@ -744,7 +746,7 @@ const sendMessage = async () => {
 
     setLogs((prev) => [...prev, logEntry]);
 
-    fetch("http://localhost:5000/api/logs", {
+    fetch(`${API_URL}/api/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(logEntry),
@@ -789,7 +791,7 @@ const sendMessage = async () => {
         )
       );
 
-      fetch(`http://localhost:5000/api/logs/${logEntry.id}`, {
+      fetch(`${API_URL}/api/logs/${logEntry.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ explanation: aiText }),
@@ -841,7 +843,7 @@ const recordUnderstanding = async (confused, logId) => {
 
     setFeedbackStatus(confused ? "confused" : "got-it");
 
-    fetch(`http://localhost:5000/api/logs/${logId}`, {
+    fetch(`${API_URL}/api/logs/${logId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confused }),
@@ -927,7 +929,7 @@ const recordUnderstanding = async (confused, logId) => {
           const tId = toast.loading("Resetting data...");
 
           try {
-            const res = await fetch("http://localhost:5000/api/reset", { method: "DELETE" });
+            const res = await fetch(`${API_URL}/api/reset`, { method: "DELETE" });
             if (!res.ok) throw new Error("Reset failed");
 
             setLogs([]);
